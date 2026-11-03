@@ -1,0 +1,10 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: motomini_description
+    relative_path: urdf/moto.urdf
+  srdf:
+    relative_path: config/motomini_workcell.srdf
+  package_settings:
+    author_name: Trong Tri
+    author_email: trongtri@local.dev
+    generated_timestamp: 1730610000

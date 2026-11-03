@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>motomini_description</name>
+  <version>1.0.0</version>
+  <description>Mo hinh 3D URDF/Xacro va Mesh cho Yaskawa MotoMINI Workcell</description>
+  <maintainer email="trongtri@local.dev">Trong Tri</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>xacro</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

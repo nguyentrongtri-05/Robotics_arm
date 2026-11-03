@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="motomini_workcell">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+
+    <!-- Import MotoMINI Workcell URDF -->
+    <xacro:include filename="$(find motomini_description)/urdf/moto.urdf" />
+
+    <!-- Import ros2_control fake hardware description -->
+    <xacro:include filename="motomini_workcell.ros2_control.xacro" />
+
+    <xacro:motomini_workcell_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+</robot>

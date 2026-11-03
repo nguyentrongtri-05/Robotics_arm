@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<robot name="motomini_workcell" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:include filename="$(find motomini_description)/urdf/motomini_macro.xacro" />
+  <xacro:motoman_motomini prefix=""/>
+
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="vacuum_gripper">
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.012" length="0.05"/></geometry>
+      <material name="dark_grey"><color rgba="0.2 0.2 0.2 1.0"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.012" length="0.05"/></geometry>
+    </collision>
+  </link>
+  <joint name="tool0_to_gripper" type="fixed">
+    <parent link="tool0"/>
+    <child link="vacuum_gripper"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="tcp_link"/>
+  <joint name="gripper_to_tcp" type="fixed">
+    <parent link="vacuum_gripper"/>
+    <child link="tcp_link"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+
+  <link name="conveyor_frame">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.15 0.80 0.06"/></geometry>
+      <material name="conveyor_green"><color rgba="0.1 0.5 0.3 1.0"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.15 0.80 0.06"/></geometry>
+    </collision>
+  </link>
+  <joint name="world_to_conveyor" type="fixed">
+    <parent link="world"/>
+    <child link="conveyor_frame"/>
+    <origin xyz="0.25 0.0 -0.03" rpy="0 0 0"/>
+  </joint>
+
+  <!-- He toa do USER#1 (user_frame_1): Dat tren mat phang bang tai (Z=0.0) va xoay 30 do -->
+  <link name="user_frame_1"/>
+  <joint name="world_to_user_frame_1" type="fixed">
+    <parent link="world"/>
+    <child link="user_frame_1"/>
+    <origin xyz="0.25 0.0 0.0" rpy="0 0 0.523599"/>
+  </joint>
+</robot>
