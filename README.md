@@ -1,6 +1,6 @@
 # Yaskawa MotoMINI ROS 2 Humble Simulation (MoveIt 2 + Teach Pendant + Virtual Conveyor)
 
-Dự án mô phỏng hệ thống cánh tay robot công nghiệp **Yaskawa MotoMINI (6-DOF)** trên nền tảng **ROS 2 Humble** & **MoveIt 2**, bám sát theo tài liệu *Bài Thí Nghiệm 1: Vận Hành Robot Công Nghiệp (Bộ môn Điều khiển Tự động - ĐHBK TP.HCM)*.
+Dự án mô phỏng hệ thống cánh tay robot công nghiệp **Yaskawa MotoMINI (6-DOF)** trên nền tảng **ROS 2 Humble** & **MoveIt 2**.
 
 ## 1. Cấu trúc thư mục
 
