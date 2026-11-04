@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot name="motomini_workcell">
-    <!-- PLANNING GROUP: Chuoi dong hoc tu base_link den dau hut tcp_link -->
+    <!-- PLANNING GROUP R1 (Trái): Chuoi dong hoc tu base_link den dau hut tcp_link -->
     <group name="manipulator">
         <chain base_link="base_link" tip_link="tcp_link"/>
     </group>
 
-    <!-- GROUP STATES: Cac tu the chuan cua MotoMINI -->
+    <!-- PLANNING GROUP R2 (Phải): Chuoi dong hoc tu r2_base_link den dau hut r2_tcp_link -->
+    <group name="manipulator_r2">
+        <chain base_link="r2_base_link" tip_link="r2_tcp_link"/>
+    </group>
+
+    <!-- GROUP STATES: Cac tu the chuan cua MotoMINI R1 -->
     <group_state name="home" group="manipulator">
         <joint name="joint_1" value="0"/>
         <joint name="joint_2" value="0"/>
@@ -23,7 +28,17 @@
         <joint name="joint_6" value="0"/>
     </group_state>
 
-    <!-- DISABLE COLLISIONS: Loai tru kiem tra va cham giua cac khau lien ke hoac khong bao gio cham nhau -->
+    <!-- GROUP STATES: Cac tu the chuan cua MotoMINI R2 -->
+    <group_state name="home" group="manipulator_r2">
+        <joint name="r2_joint_1" value="0"/>
+        <joint name="r2_joint_2" value="0"/>
+        <joint name="r2_joint_3" value="0"/>
+        <joint name="r2_joint_4" value="0"/>
+        <joint name="r2_joint_5" value="0"/>
+        <joint name="r2_joint_6" value="0"/>
+    </group_state>
+
+    <!-- DISABLE COLLISIONS R1 -->
     <disable_collisions link1="base_link" link2="conveyor_frame" reason="Never"/>
     <disable_collisions link1="base_link" link2="link_1_s" reason="Adjacent"/>
     <disable_collisions link1="base_link" link2="link_2_l" reason="Never"/>
@@ -46,5 +61,41 @@
     <disable_collisions link1="link_5_b" link2="link_6_t" reason="Adjacent"/>
     <disable_collisions link1="link_5_b" link2="vacuum_gripper" reason="Never"/>
     <disable_collisions link1="link_6_t" link2="vacuum_gripper" reason="Adjacent"/>
+
+    <!-- DISABLE COLLISIONS R2 & 2 CONVEYORS & ROTARY TABLE -->
+    <disable_collisions link1="r2_base_link" link2="conveyor_frame" reason="Never"/>
+    <disable_collisions link1="r2_base_link" link2="conveyor2_frame" reason="Never"/>
+    <disable_collisions link1="base_link" link2="conveyor2_frame" reason="Never"/>
+    <disable_collisions link1="conveyor_frame" link2="conveyor2_frame" reason="Never"/>
+    <disable_collisions link1="rotary_table_a" link2="conveyor_frame" reason="Never"/>
+    <disable_collisions link1="rotary_table_a" link2="conveyor2_frame" reason="Never"/>
+    <disable_collisions link1="rotary_table_a" link2="base_link" reason="Never"/>
+    <disable_collisions link1="rotary_table_a" link2="r2_base_link" reason="Never"/>
+    <disable_collisions link1="r2_base_link" link2="base_link" reason="Never"/>
+    <disable_collisions link1="r2_base_link" link2="r2_link_1_s" reason="Adjacent"/>
+    <disable_collisions link1="r2_base_link" link2="r2_link_2_l" reason="Never"/>
+    <disable_collisions link1="r2_base_link" link2="r2_link_3_u" reason="Never"/>
+    <disable_collisions link1="conveyor_frame" link2="r2_link_1_s" reason="Never"/>
+    <disable_collisions link1="conveyor_frame" link2="r2_link_2_l" reason="Never"/>
+    <disable_collisions link1="conveyor2_frame" link2="r2_link_1_s" reason="Never"/>
+    <disable_collisions link1="conveyor2_frame" link2="r2_link_2_l" reason="Never"/>
+    <disable_collisions link1="conveyor2_frame" link2="link_1_s" reason="Never"/>
+    <disable_collisions link1="conveyor2_frame" link2="link_2_l" reason="Never"/>
+    <disable_collisions link1="r2_link_1_s" link2="r2_link_2_l" reason="Adjacent"/>
+    <disable_collisions link1="r2_link_1_s" link2="r2_link_3_u" reason="Never"/>
+    <disable_collisions link1="r2_link_2_l" link2="r2_link_3_u" reason="Adjacent"/>
+    <disable_collisions link1="r2_link_2_l" link2="r2_link_4_r" reason="Never"/>
+    <disable_collisions link1="r2_link_2_l" link2="r2_link_5_b" reason="Never"/>
+    <disable_collisions link1="r2_link_2_l" link2="r2_link_6_t" reason="Never"/>
+    <disable_collisions link1="r2_link_3_u" link2="r2_link_4_r" reason="Adjacent"/>
+    <disable_collisions link1="r2_link_3_u" link2="r2_link_5_b" reason="Never"/>
+    <disable_collisions link1="r2_link_3_u" link2="r2_link_6_t" reason="Never"/>
+    <disable_collisions link1="r2_link_3_u" link2="r2_vacuum_gripper" reason="Never"/>
+    <disable_collisions link1="r2_link_4_r" link2="r2_link_5_b" reason="Adjacent"/>
+    <disable_collisions link1="r2_link_4_r" link2="r2_link_6_t" reason="Never"/>
+    <disable_collisions link1="r2_link_4_r" link2="r2_vacuum_gripper" reason="Never"/>
+    <disable_collisions link1="r2_link_5_b" link2="r2_link_6_t" reason="Adjacent"/>
+    <disable_collisions link1="r2_link_5_b" link2="r2_vacuum_gripper" reason="Never"/>
+    <disable_collisions link1="r2_link_6_t" link2="r2_vacuum_gripper" reason="Adjacent"/>
 </robot>
 

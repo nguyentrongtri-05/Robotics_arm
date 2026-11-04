@@ -202,32 +202,277 @@
     <child link="tcp_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.05"/>
   </joint>
+  <!-- ================================================================== -->
+  <!-- ROBOT 2 (R2 - PHẢI): Đặt đối diện bên kia băng tải (X=0.50, Y=0.0)  -->
+  <!-- Xoay 180 độ (yaw=pi) quay mặt về phía băng tải để phối hợp với R1  -->
+  <!-- ================================================================== -->
+  <link name="r2_base_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/base_link.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/base_link.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_link_1_s">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/link_1_s.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/link_1_s.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_link_2_l">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/link_2_l.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/link_2_l.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_link_3_u">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/link_3_u.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/link_3_u.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_link_4_r">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/link_4_r.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/link_4_r.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_link_5_b">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/link_5_b.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/link_5_b.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_link_6_t">
+    <visual>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/visual/link_6_t.stl"/>
+      </geometry>
+      <material name="r2_blue">
+        <color rgba="0.10 0.35 0.85 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://motomini_description/meshes/motomini/collision/link_6_t.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r2_tool0"/>
+
+  <joint name="r2_joint_1" type="revolute">
+    <parent link="r2_base_link"/>
+    <child link="r2_link_1_s"/>
+    <origin rpy="0 0 0" xyz="0 0 0.103"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="0.12" lower="-2.9670" upper="2.9670" velocity="5.4977"/>
+  </joint>
+  <joint name="r2_joint_2" type="revolute">
+    <parent link="r2_link_1_s"/>
+    <child link="r2_link_2_l"/>
+    <origin rpy="0 0 0" xyz="0.020 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="0.12" lower="-1.4835" upper="1.5707" velocity="5.4977"/>
+  </joint>
+  <joint name="r2_joint_3" type="revolute">
+    <parent link="r2_link_2_l"/>
+    <child link="r2_link_3_u"/>
+    <origin rpy="0 0 0" xyz="0 0 0.165"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="0.12" lower="-0.8726" upper="1.5707" velocity="7.3304"/>
+  </joint>
+  <joint name="r2_joint_4" type="revolute">
+    <parent link="r2_link_3_u"/>
+    <child link="r2_link_4_r"/>
+    <origin rpy="0 0 0" xyz="0.165 0 0"/>
+    <axis xyz="-1 0 0"/>
+    <limit effort="0.07" lower="-2.4434" upper="2.4434" velocity="10.4719"/>
+  </joint>
+  <joint name="r2_joint_5" type="revolute">
+    <parent link="r2_link_4_r"/>
+    <child link="r2_link_5_b"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="0.07" lower="-0.5235" upper="3.6651" velocity="10.4719"/>
+  </joint>
+  <joint name="r2_joint_6" type="revolute">
+    <parent link="r2_link_5_b"/>
+    <child link="r2_link_6_t"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="0.07" lower="-6.2831" upper="6.2831" velocity="10.4719"/>
+  </joint>
+  <joint name="r2_joint_6-tool0" type="fixed">
+    <origin rpy="3.141592653589793 0 0" xyz="0 0 -0.040 "/>
+    <parent link="r2_link_6_t"/>
+    <child link="r2_tool0"/>
+  </joint>
+  <link name="r2_base"/>
+  <joint name="r2_base_link-base" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0.103"/>
+    <parent link="r2_base_link"/>
+    <child link="r2_base"/>
+  </joint>
+  <joint name="world_to_r2_base" type="fixed">
+    <parent link="world"/>
+    <child link="r2_base_link"/>
+    <origin rpy="0 0 1.5707963267948966" xyz="0.58 0.14 0.0"/>
+  </joint>
+  <link name="r2_vacuum_gripper">
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0.025"/>
+      <geometry>
+        <cylinder length="0.05" radius="0.012"/>
+      </geometry>
+      <material name="orange_gripper">
+        <color rgba="0.9 0.4 0.1 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0.025"/>
+      <geometry>
+        <cylinder length="0.05" radius="0.012"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="r2_tool0_to_gripper" type="fixed">
+    <parent link="r2_tool0"/>
+    <child link="r2_vacuum_gripper"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+  </joint>
+  <link name="r2_tcp_link"/>
+  <joint name="r2_gripper_to_tcp" type="fixed">
+    <parent link="r2_vacuum_gripper"/>
+    <child link="r2_tcp_link"/>
+    <origin rpy="0 0 0" xyz="0 0 0.05"/>
+  </joint>
+
   <link name="conveyor_frame">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.15 0.80 0.06"/>
+        <box size="0.14 0.70 0.06"/>
       </geometry>
       <material name="conveyor_green">
-        <color rgba="0.1 0.5 0.3 1.0"/>
+        <color rgba="0.10 0.52 0.32 1.0"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.15 0.80 0.06"/>
+        <box size="0.14 0.70 0.06"/>
       </geometry>
     </collision>
   </link>
   <joint name="world_to_conveyor" type="fixed">
     <parent link="world"/>
     <child link="conveyor_frame"/>
-    <origin rpy="0 0 0" xyz="0.25 0.0 -0.03"/>
+    <origin rpy="0 0 0" xyz="0.22 -0.14 -0.03"/>
   </joint>
+
+  <link name="conveyor2_frame">
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="0.14 0.70 0.06"/>
+      </geometry>
+      <material name="conveyor2_teal">
+        <color rgba="0.08 0.45 0.55 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="0.14 0.70 0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_conveyor2" type="fixed">
+    <parent link="world"/>
+    <child link="conveyor2_frame"/>
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.68 0.38 -0.03"/>
+  </joint>
+
+  <link name="rotary_table_a">
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.085"/>
+      </geometry>
+      <material name="silver_table">
+        <color rgba="0.82 0.84 0.88 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.085"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_rotary_table" type="fixed">
+    <parent link="world"/>
+    <child link="rotary_table_a"/>
+    <origin rpy="0 0 0" xyz="0.22 0.28 -0.02"/>
+  </joint>
+
   <link name="user_frame_1"/>
   <joint name="world_to_user_frame_1" type="fixed">
     <parent link="world"/>
     <child link="user_frame_1"/>
-    <origin rpy="0 0 0.523599" xyz="0.25 0.0 0.0"/>
+    <origin rpy="0 0 0.523599" xyz="0.22 0.0 0.0"/>
   </joint>
 </robot>

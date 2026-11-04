@@ -6,6 +6,9 @@ controller_manager:
     manipulator_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+    manipulator_r2_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
@@ -18,6 +21,22 @@ manipulator_controller:
       - joint_4
       - joint_5
       - joint_6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    allow_nonzero_velocity_at_trajectory_end: true
+
+manipulator_r2_controller:
+  ros__parameters:
+    joints:
+      - r2_joint_1
+      - r2_joint_2
+      - r2_joint_3
+      - r2_joint_4
+      - r2_joint_5
+      - r2_joint_6
     command_interfaces:
       - position
     state_interfaces:

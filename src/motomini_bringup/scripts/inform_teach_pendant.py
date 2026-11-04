@@ -141,11 +141,24 @@ class InformTeachPendantNode(Node):
             10,
         )
 
+        # ActionClient & Publisher cho Canh tay Robot 2 (R2 - CONTROL GROUP: R2)
+        self.traj_r2_client = ActionClient(
+            self,
+            FollowJointTrajectory,
+            '/manipulator_r2_controller/follow_joint_trajectory',
+        )
+        self.traj_r2_pub = self.create_publisher(
+            JointTrajectory,
+            '/manipulator_r2_controller/joint_trajectory',
+            10,
+        )
+
         # Digital Inputs IN#1..IN#8 & Outputs OUT#1..OUT#8 (Trang 9, 17)
         self.din = {i: False for i in range(1, 9)}
         self.dout = {i: False for i in range(1, 9)}
 
         self.dout1_pub = self.create_publisher(Bool, '/yaskawa/dout1', 10)
+        self.dout2_pub = self.create_publisher(Bool, '/yaskawa/dout2', 10)
         self.din1_sub = self.create_subscription(
             Bool, '/yaskawa/din1', self.din1_callback, 10
         )
@@ -156,8 +169,12 @@ class InformTeachPendantNode(Node):
 
         # Gioi han khop chuan Bang 1 (Trang 2):
         # S: -170..+170, L: -85..+90, U: -50..+90, R: -140..+140, B: -30..+210, T: -360..+360
-        self.joint_names = [
+        self.active_robot = 'R1'         # 'R1' (Robot 1 - Trái) hoặc 'R2' (Robot 2 - Phải)
+        self.r1_joint_names = [
             'joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6'
+        ]
+        self.r2_joint_names = [
+            'r2_joint_1', 'r2_joint_2', 'r2_joint_3', 'r2_joint_4', 'r2_joint_5', 'r2_joint_6'
         ]
         self.joint_limits = [
             (math.radians(-170), math.radians(170)),
@@ -167,7 +184,8 @@ class InformTeachPendantNode(Node):
             (math.radians(-30), math.radians(210)),
             (math.radians(-360), math.radians(360)),
         ]
-        self.current_joints = [0.0] * 6
+        self.r1_joints = [0.0] * 6
+        self.r2_joints = [0.0] * 6
         self.joint_sub = self.create_subscription(
             JointState, '/joint_states', self.joint_state_callback, 10
         )
@@ -250,6 +268,22 @@ class InformTeachPendantNode(Node):
         self.jog_timer = self.create_timer(self.jog_dt, self._continuous_jog_loop)
 
     @property
+    def joint_names(self):
+        return self.r1_joint_names if self.active_robot == 'R1' else self.r2_joint_names
+
+    @property
+    def current_joints(self):
+        return self.r1_joints if self.active_robot == 'R1' else self.r2_joints
+
+    @property
+    def active_traj_pub(self):
+        return self.traj_pub if self.active_robot == 'R1' else self.traj_r2_pub
+
+    @property
+    def active_traj_client(self):
+        return self.traj_client if self.active_robot == 'R1' else self.traj_r2_client
+
+    @property
     def is_servo_powered(self) -> bool:
         if self.estop_active:
             return False
@@ -262,8 +296,10 @@ class InformTeachPendantNode(Node):
 
     def joint_state_callback(self, msg: JointState):
         name_to_pos = dict(zip(msg.name, msg.position))
-        if all(j in name_to_pos for j in self.joint_names):
-            self.current_joints = [name_to_pos[j] for j in self.joint_names]
+        if all(j in name_to_pos for j in self.r1_joint_names):
+            self.r1_joints = [name_to_pos[j] for j in self.r1_joint_names]
+        if all(j in name_to_pos for j in self.r2_joint_names):
+            self.r2_joints = [name_to_pos[j] for j in self.r2_joint_names]
 
     def set_dout(self, ch: int, state_on: bool):
         self.dout[ch] = state_on
@@ -271,6 +307,10 @@ class InformTeachPendantNode(Node):
             msg = Bool()
             msg.data = state_on
             self.dout1_pub.publish(msg)
+        elif ch == 2:
+            msg = Bool()
+            msg.data = state_on
+            self.dout2_pub.publish(msg)
 
     def pulse_dout(self, ch: int, duration_sec: float = 1.0):
         def _p():
@@ -354,7 +394,7 @@ class InformTeachPendantNode(Node):
             pt.velocities = [0.0] * 6
             pt.time_from_start = Duration(seconds=0, nanoseconds=50_000_000).to_msg()
             msg.points = [pt]
-            self.traj_pub.publish(msg)
+            self.active_traj_pub.publish(msg)
 
     def _continuous_jog_loop(self):
         if self.jog_active_axis is None or self.is_running_job or not self.is_servo_powered:
@@ -414,7 +454,7 @@ class InformTeachPendantNode(Node):
         pt.velocities = [0.0] * 6
         pt.time_from_start = Duration(seconds=0, nanoseconds=80_000_000).to_msg()
         msg.points = [pt]
-        self.traj_pub.publish(msg)
+        self.active_traj_pub.publish(msg)
 
     def log_status(self, text: str):
         if self.status_callback:
@@ -430,7 +470,7 @@ class InformTeachPendantNode(Node):
             self.log_status(reason)
             return False
 
-        if not self.traj_client.wait_for_server(timeout_sec=2.0):
+        if not self.active_traj_client.wait_for_server(timeout_sec=2.0):
             return False
 
         speed_clamped = max(5.0, min(100.0, float(speed_percent)))
@@ -446,7 +486,7 @@ class InformTeachPendantNode(Node):
         point.time_from_start = Duration(seconds=sec, nanoseconds=nanosec).to_msg()
         goal_msg.trajectory.points = [point]
 
-        send_future = self.traj_client.send_goal_async(goal_msg)
+        send_future = self.active_traj_client.send_goal_async(goal_msg)
         while not send_future.done():
             if self.stop_requested:
                 return False
@@ -581,8 +621,14 @@ class YaskawaAuthenticPendantGUI:
         self.node.status_callback = self.set_human_interface_msg
 
         self.root = tk.Tk()
-        self.root.title('YASKAWA YRC1000micro Programming Pendant - Bài Thí Nghiệm 1 ĐHBK TPHCM')
-        self.root.geometry('1180x780')
+        self.root.title('YASKAWA YRC1000micro Programming Pendant')
+        # Tu dong lay do phan giai man hinh laptop va dat cua so chiem NUA PHAI MAN HINH (50% Width)
+        scr_w = self.root.winfo_screenwidth()
+        scr_h = self.root.winfo_screenheight()
+        half_w = max(860, scr_w // 2)
+        win_h = max(760, scr_h - 65)
+        pos_x = scr_w - half_w
+        self.root.geometry(f'{half_w}x{win_h}+{pos_x}+0')
         self.root.configure(bg='#3a3d42')
 
         # Con tro dong lenh tren JOB CONTENT (Address Cursor)
@@ -597,15 +643,17 @@ class YaskawaAuthenticPendantGUI:
         self.root.after(80, self._periodic_update)
 
     def _build_layout(self):
-        # Chia cua so: Trai = Tay cam Programming Pendant (Hinh 5 + Hinh 6), Phai = Control Panel I/O (Hinh 14) + Huong dan
-        main_wrap = tk.Frame(self.root, bg='#3a3d42', padx=8, pady=6)
+        # Bo cuc doc chuan nua man hinh Laptop 16-inch:
+        # Phan tren: Bo lap trinh Yaskawa Programming Pendant
+        # Phan duoi: Bang Yaskawa Control Panel I/O (Hinh 14) nam ngang gon gang, khong bao gio bi cat chu!
+        main_wrap = tk.Frame(self.root, bg='#3a3d42', padx=6, pady=4)
         main_wrap.pack(fill=tk.BOTH, expand=True)
 
         # =================================================================
-        # KHUNG TRAI: THÂN BỘ LẬP TRÌNH YASKAWA (PROGRAMMING PENDANT - HÌNH 5)
+        # PHAN TREN: THÂN BỘ LẬP TRÌNH YASKAWA (PROGRAMMING PENDANT - HÌNH 5)
         # =================================================================
-        pendant = tk.Frame(main_wrap, bg='#4a4e54', bd=4, relief=tk.RAISED, padx=10, pady=8)
-        pendant.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        pendant = tk.Frame(main_wrap, bg='#4a4e54', bd=3, relief=tk.RAISED, padx=8, pady=6)
+        pendant.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(0, 6))
 
         # --- 1. TOP HOUSING: Mode Switch + [START] + [HOLD] + [EMERGENCY STOP] (Bảng 2 - Trang 4) ---
         top_housing = tk.Frame(pendant, bg='#2c3036', bd=2, relief=tk.GROOVE, padx=10, pady=6)
@@ -717,6 +765,17 @@ class YaskawaAuthenticPendantGUI:
             status_icons, text='[TEACH]', bg='#364fc7', fg='white', font=('Ubuntu Mono', 9, 'bold'), padx=4
         )
         self.icon_mode.pack(side=tk.LEFT, padx=2, pady=2)
+
+        self.btn_robot_sel = tk.Button(
+            status_icons,
+            text='🤖 GROUP: R1',
+            bg='#d9480f',
+            fg='white',
+            font=('Ubuntu Mono', 8, 'bold'),
+            padx=4,
+            command=self._toggle_active_robot,
+        )
+        self.btn_robot_sel.pack(side=tk.LEFT, padx=2, pady=1)
 
         tk.Label(
             status_icons, text='TOOL:00', bg='#212529', fg='#ffd43b', font=('Ubuntu Mono', 9, 'bold'), padx=4
@@ -884,23 +943,23 @@ class YaskawaAuthenticPendantGUI:
         self.human_msg_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3, pady=2)
 
         # --- 3. BÀN PHÍM CỨNG BỘ LẬP TRÌNH (CÁC NÚT NHẤN CHUẨN BẢNG 2 - TRANG 4, 5, 6) ---
-        hw_keys = tk.Frame(pendant, bg='#343a40', bd=2, relief=tk.GROOVE, padx=8, pady=6)
+        hw_keys = tk.Frame(pendant, bg='#343a40', bd=2, relief=tk.GROOVE, padx=4, pady=4)
         hw_keys.pack(fill=tk.X)
 
         # Chia 3 cụm bàn phím cứng: Trái (Điều hướng & Servo), Giữa (12 phím Axis Key + Speed/Coord), Phải (Lập trình INFORM)
         col_nav = tk.Frame(hw_keys, bg='#343a40')
-        col_nav.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+        col_nav.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 4))
 
         col_axis = tk.Frame(hw_keys, bg='#343a40')
-        col_axis.pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        col_axis.pack(side=tk.LEFT, fill=tk.Y, padx=4)
 
         col_prog = tk.Frame(hw_keys, bg='#343a40')
-        col_prog.pack(side=tk.RIGHT, fill=tk.Y, padx=(8, 0))
+        col_prog.pack(side=tk.RIGHT, fill=tk.Y, padx=(4, 0))
 
         # === CỤM 1 (TRÁI): [SERVO ON READY], [Enable Switch], Cursor Keys, [SELECT], [CANCEL] ===
         tk.Label(
             col_nav, text='NGUỒN SERVO & ĐIỀU HƯỚNG', fg='#ffd43b', bg='#343a40', font=('Ubuntu', 8, 'bold')
-        ).pack(pady=(0, 4))
+        ).pack(pady=(0, 2))
 
         srv_row = tk.Frame(col_nav, bg='#343a40')
         srv_row.pack(fill=tk.X, pady=2)
@@ -910,107 +969,104 @@ class YaskawaAuthenticPendantGUI:
             bg='#00e676',
             fg='black',
             font=('Ubuntu', 8, 'bold'),
-            width=10,
+            width=9,
             command=self._toggle_servo_ready,
         )
-        self.btn_servo_ready.pack(side=tk.LEFT, padx=2)
+        self.btn_servo_ready.pack(side=tk.LEFT, padx=1)
 
         self.btn_enable_sw = tk.Button(
             srv_row,
-            text='Enable Switch\n(Đang đè nhẹ: ON)',
+            text='Enable Switch\n(Đè nhẹ: ON)',
             bg='#1864ab',
             fg='white',
             font=('Ubuntu', 8, 'bold'),
-            width=14,
+            width=12,
             command=self._toggle_enable_switch,
         )
-        self.btn_enable_sw.pack(side=tk.LEFT, padx=2)
+        self.btn_enable_sw.pack(side=tk.LEFT, padx=1)
 
         # Cụm phím điều hướng: [MAIN MENU], [AREA], [PAGE], [SELECT], [CANCEL] + Cursor UP/DOWN
-        nav_grid = tk.Frame(col_nav, bg='#343a40', pady=4)
+        nav_grid = tk.Frame(col_nav, bg='#343a40', pady=2)
         nav_grid.pack()
 
         tk.Button(
-            nav_grid, text='MAIN\nMENU', width=6, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
+            nav_grid, text='MAIN\nMENU', width=5, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
             command=self._toggle_main_menu
-        ).grid(row=0, column=0, padx=2, pady=2)
+        ).grid(row=0, column=0, padx=1, pady=1)
         tk.Button(
-            nav_grid, text='▲\nUP', width=6, bg='#212529', fg='#ffd43b', font=('Ubuntu', 8, 'bold'),
+            nav_grid, text='▲\nUP', width=5, bg='#212529', fg='#ffd43b', font=('Ubuntu', 8, 'bold'),
             command=lambda: self._move_cursor(-1)
-        ).grid(row=0, column=1, padx=2, pady=2)
+        ).grid(row=0, column=1, padx=1, pady=1)
         tk.Button(
-            nav_grid, text='PAGE\n📄', width=6, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
+            nav_grid, text='PAGE\n📄', width=5, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
             command=self._cycle_screens
-        ).grid(row=0, column=2, padx=2, pady=2)
+        ).grid(row=0, column=2, padx=1, pady=1)
 
         tk.Button(
-            nav_grid, text='CANCEL', width=6, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
+            nav_grid, text='CANCEL', width=5, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
             command=lambda: self.inform_popup.pack_forget()
-        ).grid(row=1, column=0, padx=2, pady=2)
+        ).grid(row=1, column=0, padx=1, pady=1)
         tk.Button(
-            nav_grid, text='▼\nDOWN', width=6, bg='#212529', fg='#ffd43b', font=('Ubuntu', 8, 'bold'),
+            nav_grid, text='▼\nDOWN', width=5, bg='#212529', fg='#ffd43b', font=('Ubuntu', 8, 'bold'),
             command=lambda: self._move_cursor(+1)
-        ).grid(row=1, column=1, padx=2, pady=2)
+        ).grid(row=1, column=1, padx=1, pady=1)
         tk.Button(
-            nav_grid, text='SELECT\n⭕', width=6, bg='#1864ab', fg='white', font=('Ubuntu', 7, 'bold'),
+            nav_grid, text='SELECT\n⭕', width=5, bg='#1864ab', fg='white', font=('Ubuntu', 7, 'bold'),
             command=self._on_press_select
-        ).grid(row=1, column=2, padx=2, pady=2)
+        ).grid(row=1, column=2, padx=1, pady=1)
 
         # === CỤM 2 (GIỮA): [COORD], [MANUAL SPEED: FAST/SLOW], [HIGH SPEED], 12 PHÍM [Axis Key] ===
         tk.Label(
             col_axis, text='HỆ TỌA ĐỘ & AXIS KEYS (NHẤN GIỮ)', fg='#74c0fc', bg='#343a40', font=('Ubuntu', 8, 'bold')
-        ).pack(pady=(0, 4))
+        ).pack(pady=(0, 2))
 
         top_axis_row = tk.Frame(col_axis, bg='#343a40')
         top_axis_row.pack(fill=tk.X, pady=2)
 
         tk.Button(
             top_axis_row,
-            text='🌐 [COORD]\nJoint/Cart/Tool/User',
+            text='🌐 [COORD]\nJnt/Cart/Tl/Usr',
             bg='#fcc419',
             fg='black',
             font=('Ubuntu', 8, 'bold'),
             command=self._on_press_coord,
-        ).pack(side=tk.LEFT, padx=2)
+        ).pack(side=tk.LEFT, padx=1)
 
         tk.Button(
             top_axis_row,
-            text='▲ FAST',
+            text='▲FAST',
             bg='#495057',
             fg='white',
             font=('Ubuntu', 8, 'bold'),
             command=lambda: self._change_manual_speed(+1),
-        ).pack(side=tk.LEFT, padx=2)
+        ).pack(side=tk.LEFT, padx=1)
 
         tk.Button(
             top_axis_row,
-            text='▼ SLOW',
+            text='▼SLOW',
             bg='#495057',
             fg='white',
             font=('Ubuntu', 8, 'bold'),
             command=lambda: self._change_manual_speed(-1),
-        ).pack(side=tk.LEFT, padx=2)
+        ).pack(side=tk.LEFT, padx=1)
 
         btn_hspd = tk.Button(
             top_axis_row,
-            text='[HIGH SPEED]',
+            text='[HIGH SPD]',
             bg='#212529',
             fg='#fcc419',
             font=('Ubuntu', 8, 'bold'),
         )
-        btn_hspd.pack(side=tk.LEFT, padx=2)
+        btn_hspd.pack(side=tk.LEFT, padx=1)
         btn_hspd.bind('<ButtonPress-1>', lambda e: self._set_high_speed(True))
         btn_hspd.bind('<ButtonRelease-1>', lambda e: self._set_high_speed(False))
         btn_hspd.bind('<Leave>', lambda e: self._set_high_speed(False))
 
         # Lưới 12 phím [Axis Key] chuẩn Hình trang 5:
-        # Cột trái: [X-/S-], [X+/S+], [Y-/L-], [Y+/L+], [Z-/U-], [Z+/U+]
-        # Cột phải: [X-/R-], [X+/R+], [Y-/B-], [Y+/B+], [Z-/T-], [Z+/T+]
         axis_grid = tk.Frame(col_axis, bg='#343a40', pady=2)
         axis_grid.pack()
 
         axis_pairs = [
-            # (Row, Left_Axis_Idx, Left_Neg_Txt, Left_Pos_Txt, Right_Axis_Idx, Right_Neg_Txt, Right_Pos_Txt)
             (0, 0, 'X-\nS-', 'X+\nS+', 3, 'Rx-\nR-', 'Rx+\nR+'),
             (1, 1, 'Y-\nL-', 'Y+\nL+', 4, 'Ry-\nB-', 'Ry+\nB+'),
             (2, 2, 'Z-\nU-', 'Z+\nU+', 5, 'Rz-\nT-', 'Rz+\nT+'),
@@ -1024,7 +1080,7 @@ class YaskawaAuthenticPendantGUI:
                 b_neg = tk.Button(
                     axis_grid,
                     text=neg_label,
-                    width=6,
+                    width=5,
                     bg='#212529',
                     fg='white',
                     activebackground='#fcc419',
@@ -1032,7 +1088,7 @@ class YaskawaAuthenticPendantGUI:
                     font=('Ubuntu Mono', 8, 'bold'),
                     bd=2,
                 )
-                b_neg.grid(row=r, column=col_offset, padx=2, pady=2)
+                b_neg.grid(row=r, column=col_offset, padx=1, pady=1)
                 b_neg.bind('<ButtonPress-1>', lambda e, i=ax_idx: self.node.start_continuous_jog(i, -1.0))
                 b_neg.bind('<ButtonRelease-1>', lambda e: self.node.stop_continuous_jog())
                 b_neg.bind('<Leave>', lambda e: self.node.stop_continuous_jog())
@@ -1040,7 +1096,7 @@ class YaskawaAuthenticPendantGUI:
                 b_pos = tk.Button(
                     axis_grid,
                     text=pos_label,
-                    width=6,
+                    width=5,
                     bg='#212529',
                     fg='white',
                     activebackground='#fcc419',
@@ -1048,7 +1104,7 @@ class YaskawaAuthenticPendantGUI:
                     font=('Ubuntu Mono', 8, 'bold'),
                     bd=2,
                 )
-                b_pos.grid(row=r, column=col_offset + 1, padx=2, pady=2)
+                b_pos.grid(row=r, column=col_offset + 1, padx=1, pady=1)
                 b_pos.bind('<ButtonPress-1>', lambda e, i=ax_idx: self.node.start_continuous_jog(i, +1.0))
                 b_pos.bind('<ButtonRelease-1>', lambda e: self.node.stop_continuous_jog())
                 b_pos.bind('<Leave>', lambda e: self.node.stop_continuous_jog())
@@ -1056,169 +1112,187 @@ class YaskawaAuthenticPendantGUI:
         # === CỤM 3 (PHẢI): NHÓM NÚT LẬP TRÌNH CHUẨN TRANG 6 ([INFORM LIST], [FWD], [BWD], [TEST START], [INSERT], [MODIFY], [DELETE], [ENTER]) ===
         tk.Label(
             col_prog, text='NHÓM NÚT LẬP TRÌNH (TRANG 6)', fg='#69db7c', bg='#343a40', font=('Ubuntu', 8, 'bold')
-        ).pack(pady=(0, 4))
+        ).pack(pady=(0, 2))
 
         prog_grid = tk.Frame(col_prog, bg='#343a40')
         prog_grid.pack()
 
         # Hàng 0: [SHIFT], [INTERLOCK], [INFORM LIST]
         self.btn_shift = tk.Button(
-            prog_grid, text='[SHIFT]', width=8, bg='#495057', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[SHIFT]', width=7, bg='#495057', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._toggle_shift
         )
-        self.btn_shift.grid(row=0, column=0, padx=2, pady=2)
+        self.btn_shift.grid(row=0, column=0, padx=1, pady=1)
 
         self.btn_interlock = tk.Button(
-            prog_grid, text='[INTERLOCK]', width=10, bg='#495057', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[INTERLOCK]', width=9, bg='#495057', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._toggle_interlock
         )
-        self.btn_interlock.grid(row=0, column=1, padx=2, pady=2)
+        self.btn_interlock.grid(row=0, column=1, padx=1, pady=1)
 
         tk.Button(
-            prog_grid, text='[INFORM LIST]', width=11, bg='#1864ab', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[INFORM LIST]', width=10, bg='#1864ab', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._toggle_inform_list
-        ).grid(row=0, column=2, padx=2, pady=2)
+        ).grid(row=0, column=2, padx=1, pady=1)
 
         # Hàng 1: [FWD], [BWD], [TEST START] (Trang 6)
         tk.Button(
-            prog_grid, text='[FWD]\nTiến 1 bước', width=8, bg='#2b8a3e', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[FWD]\nTiến 1 bước', width=7, bg='#2b8a3e', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._on_press_fwd
-        ).grid(row=1, column=0, padx=2, pady=2)
+        ).grid(row=1, column=0, padx=1, pady=1)
 
         tk.Button(
-            prog_grid, text='[BWD]\nLùi 1 bước', width=10, bg='#495057', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[BWD]\nLùi 1 bước', width=9, bg='#495057', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._on_press_bwd
-        ).grid(row=1, column=1, padx=2, pady=2)
+        ).grid(row=1, column=1, padx=1, pady=1)
 
         btn_test = tk.Button(
-            prog_grid, text='[TEST START]\n(Giữ để chạy thử)', width=11, bg='#e67700', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[TEST START]\n(Giữ chạy thử)', width=10, bg='#e67700', fg='white', font=('Ubuntu', 8, 'bold'),
         )
-        btn_test.grid(row=1, column=2, padx=2, pady=2)
+        btn_test.grid(row=1, column=2, padx=1, pady=1)
         btn_test.bind('<ButtonPress-1>', lambda e: self._start_test_run())
         btn_test.bind('<ButtonRelease-1>', lambda e: self._stop_test_run())
 
         # Hàng 2: [INSERT], [MODIFY], [DELETE], [ENTER] (Trang 6 & Trang 14)
         tk.Button(
-            prog_grid, text='[INSERT]\nChèn dòng', width=8, bg='#364fc7', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[INSERT]\nChèn dòng', width=7, bg='#364fc7', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._on_press_insert
-        ).grid(row=2, column=0, padx=2, pady=2)
+        ).grid(row=2, column=0, padx=1, pady=1)
 
         tk.Button(
-            prog_grid, text='[MODIFY]\nSửa / Dạy điểm', width=10, bg='#fcc419', fg='black', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[MODIFY]\nSửa/Dạy điểm', width=9, bg='#fcc419', fg='black', font=('Ubuntu', 8, 'bold'),
             command=self._on_press_modify
-        ).grid(row=2, column=1, padx=2, pady=2)
+        ).grid(row=2, column=1, padx=1, pady=1)
 
         tk.Button(
-            prog_grid, text='[DELETE]\nXóa dòng', width=11, bg='#c92a2a', fg='white', font=('Ubuntu', 8, 'bold'),
+            prog_grid, text='[DELETE]\nXóa dòng', width=10, bg='#c92a2a', fg='white', font=('Ubuntu', 8, 'bold'),
             command=self._on_press_delete
-        ).grid(row=2, column=2, padx=2, pady=2)
+        ).grid(row=2, column=2, padx=1, pady=1)
 
         tk.Button(
             prog_grid, text='⏎ [ENTER] (Xác nhận ghi / Dạy điểm P)', bg='#00c853', fg='black',
-            font=('Ubuntu', 9, 'bold'), command=self._on_press_modify
-        ).grid(row=3, column=0, columnspan=3, sticky='we', padx=2, pady=3)
+            font=('Ubuntu', 8, 'bold'), command=self._on_press_modify
+        ).grid(row=3, column=0, columnspan=3, sticky='we', padx=1, pady=2)
 
         # =================================================================
-        # KHUNG PHẢI: YASKAWA CONTROL PANEL I/O (HÌNH 14 - TRANG 17)
+        # PHẦN DƯỚI: YASKAWA CONTROL PANEL I/O NẰM NGANG GỌN GÀNG (HÌNH 14 - TRANG 17)
+        # Vừa khít 100% trong nửa màn hình Laptop 16-inch mà không bị cắt bất kỳ chữ nào!
         # =================================================================
-        panel = tk.Frame(main_wrap, bg='#d0d7de', bd=3, relief=tk.RAISED, padx=10, pady=8, width=290)
-        panel.pack(side=tk.RIGHT, fill=tk.Y)
+        panel = tk.Frame(main_wrap, bg='#d0d7de', bd=2, relief=tk.RAISED, padx=8, pady=4)
+        panel.pack(side=tk.BOTTOM, fill=tk.X)
 
+        top_cp_hdr = tk.Frame(panel, bg='#d0d7de')
+        top_cp_hdr.pack(fill=tk.X, pady=(0, 3))
         tk.Label(
-            panel, text='YASKAWA\nCONTROL PANEL', fg='#1d3587', bg='#d0d7de', font=('Ubuntu', 13, 'bold')
-        ).pack(pady=(0, 6))
-
-        tk.Label(
-            panel, text='(Hình 14 - Trang 17: Kết nối I/O)', fg='#495057', bg='#d0d7de', font=('Ubuntu', 8, 'bold')
-        ).pack(pady=(0, 6))
-
-        # Công tắc gạt INPUT: IN#1 (Cảm biến băng tải) + I4..I7 (nối với IN#5..IN#8)
-        in_box = tk.LabelFrame(
-            panel, text=' INPUT SWITCHES (I4..I7 -> IN#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=6
-        )
-        in_box.pack(fill=tk.X, pady=4)
-
-        self.in1_panel_lbl = tk.Label(
-            in_box, text='● IN#1 (Cảm biến băng tải): OFF', bg='#212529', fg='#ff6b6b', font=('Ubuntu Mono', 9, 'bold'), pady=4
-        )
-        self.in1_panel_lbl.pack(fill=tk.X, pady=(0, 6))
-
-        self.sw_btns = {}
-        for sw_label, in_ch, desc in [
-            ('Công tắc I4 (IN#5)', 5, 'Gắp vật ở A1'),
-            ('Công tắc I5 (IN#6)', 6, 'Gắp vật ở A2'),
-            ('Công tắc I6 (IN#7)', 7, 'Gắp vật ở A3'),
-            ('Công tắc I7 (IN#8)', 8, 'OFF->Thả B | ON->Thả C'),
-        ]:
-            row_sw = tk.Frame(in_box, bg='#d0d7de')
-            row_sw.pack(fill=tk.X, pady=2)
-            b = tk.Button(
-                row_sw,
-                text=f'{sw_label}: OFF',
-                bg='#495057',
-                fg='white',
-                font=('Ubuntu', 8, 'bold'),
-                width=18,
-                command=lambda c=in_ch: self._toggle_input_switch(c),
-            )
-            b.pack(side=tk.LEFT)
-            tk.Label(row_sw, text=desc, bg='#d0d7de', fg='#212529', font=('Ubuntu', 8)).pack(side=tk.LEFT, padx=4)
-            self.sw_btns[in_ch] = b
-
-        # Đèn báo OUTPUT: OUT#1 (Giác hút / Nam châm) + Q4..Q7 (OUT#5..OUT#8)
-        out_box = tk.LabelFrame(
-            panel, text=' OUTPUT LAMPS (Q4..Q7 -> OUT#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=6
-        )
-        out_box.pack(fill=tk.X, pady=6)
-
-        self.out_lamps = {}
-        for out_ch, lamp_name in [
-            (1, 'OUT#1 (Giác hút / Magnet)'),
-            (5, 'Đèn Q4 (OUT#5 - Báo thả B)'),
-            (6, 'Đèn Q5 (OUT#6 - Báo thả C)'),
-            (7, 'Đèn Q6 (OUT#7)'),
-            (8, 'Đèn Q7 (OUT#8)'),
-        ]:
-            lbl = tk.Label(
-                out_box,
-                text=f'○ {lamp_name}: OFF',
-                bg='#212529',
-                fg='#adb5bd',
-                font=('Ubuntu Mono', 9, 'bold'),
-                anchor='w',
-                padx=8,
-                pady=4,
-            )
-            lbl.pack(fill=tk.X, pady=2)
-            self.out_lamps[out_ch] = lbl
+            top_cp_hdr,
+            text='🎛️ YASKAWA CONTROL PANEL (Hình 14 - Trang 17: Bảng Công Tắc I4..I7 & Đèn Báo Q4..Q7)',
+            fg='#1d3587',
+            bg='#d0d7de',
+            font=('Ubuntu', 9, 'bold'),
+        ).pack(side=tk.LEFT)
 
         tk.Button(
-            out_box,
-            text='🔌 Bật/Tắt nhanh OUT#1 ([INTERLOCK]+[SELECT])',
-            bg='#1864ab',
-            fg='white',
-            font=('Ubuntu', 8, 'bold'),
-            command=lambda: self.node.set_dout(1, not self.node.dout[1]),
-        ).pack(fill=tk.X, pady=(4, 0))
-
-        # Nút về Work Home Pos nhanh (Trang 10 - Mục 7)
-        home_box = tk.LabelFrame(
-            panel, text=' THAO TÁC NHANH BÀI THÍ NGHIỆM 1 ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=6
-        )
-        home_box.pack(fill=tk.X, pady=4)
-
-        tk.Button(
-            home_box,
+            top_cp_hdr,
             text='🏠 Về Work Home Pos (Hình 11 - Tất cả khớp 0°)',
             bg='#2b8a3e',
             fg='white',
             font=('Ubuntu', 8, 'bold'),
+            padx=6,
             command=lambda: threading.Thread(
                 target=self.node.move_to_joints,
                 args=(self.node.points['P000'], self.node.get_effective_speed()),
                 daemon=True,
             ).start(),
-        ).pack(fill=tk.X, pady=2)
+        ).pack(side=tk.RIGHT, padx=4)
+
+        tk.Button(
+            top_cp_hdr,
+            text='🔌 Bật/Tắt nhanh OUT#1 ([INTERLOCK]+[SELECT])',
+            bg='#1864ab',
+            fg='white',
+            font=('Ubuntu', 8, 'bold'),
+            padx=6,
+            command=lambda: self.node.set_dout(1, not self.node.dout[1]),
+        ).pack(side=tk.RIGHT, padx=4)
+
+        cp_cols = tk.Frame(panel, bg='#d0d7de')
+        cp_cols.pack(fill=tk.X)
+
+        # Cột Trái Control Panel: INPUT SWITCHES (IN#1 + Công tắc I4..I7)
+        in_box = tk.LabelFrame(
+            cp_cols, text=' INPUT SWITCHES (I4..I7 -> IN#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=3
+        )
+        in_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+
+        self.in1_panel_lbl = tk.Label(
+            in_box, text='● IN#1 (Cảm biến băng tải): OFF', bg='#212529', fg='#ff6b6b', font=('Ubuntu Mono', 8, 'bold'), pady=3
+        )
+        self.in1_panel_lbl.pack(fill=tk.X, pady=(0, 3))
+
+        sw_grid = tk.Frame(in_box, bg='#d0d7de')
+        sw_grid.pack(fill=tk.X)
+
+        self.sw_btns = {}
+        for idx_sw, (sw_label, in_ch, desc) in enumerate([
+            ('Công tắc I4 (IN#5)', 5, 'Gắp A1'),
+            ('Công tắc I5 (IN#6)', 6, 'Gắp A2'),
+            ('Công tắc I6 (IN#7)', 7, 'Gắp A3'),
+            ('Công tắc I7 (IN#8)', 8, 'OFF:B / ON:C'),
+        ]):
+            r_sw = idx_sw // 2
+            c_sw = idx_sw % 2
+            cell = tk.Frame(sw_grid, bg='#d0d7de')
+            cell.grid(row=r_sw, column=c_sw, sticky='w', padx=3, pady=1)
+            b = tk.Button(
+                cell,
+                text=f'{sw_label}: OFF',
+                bg='#495057',
+                fg='white',
+                font=('Ubuntu', 8, 'bold'),
+                width=16,
+                command=lambda c=in_ch: self._toggle_input_switch(c),
+            )
+            b.pack(side=tk.LEFT)
+            tk.Label(cell, text=desc, bg='#d0d7de', fg='#212529', font=('Ubuntu', 8, 'bold')).pack(side=tk.LEFT, padx=3)
+            self.sw_btns[in_ch] = b
+
+        # Cột Phải Control Panel: OUTPUT LAMPS (OUT#1 + Q4..Q7)
+        out_box = tk.LabelFrame(
+            cp_cols, text=' OUTPUT LAMPS (Q4..Q7 -> OUT#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=3
+        )
+        out_box.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(4, 0))
+
+        lamp_grid = tk.Frame(out_box, bg='#d0d7de')
+        lamp_grid.pack(fill=tk.X)
+
+        self.out_lamps = {}
+        for idx_l, (out_ch, lamp_name) in enumerate([
+            (1, 'OUT#1 (Giác hút / Magnet)'),
+            (5, 'Đèn Q4 (OUT#5 - Báo thả B)'),
+            (6, 'Đèn Q5 (OUT#6 - Báo thả C)'),
+            (7, 'Đèn Q6 (OUT#7)'),
+            (8, 'Đèn Q7 (OUT#8)'),
+        ]):
+            r_l = idx_l // 2
+            c_l = idx_l % 2
+            col_span = 2 if idx_l == 0 else 1
+            if idx_l > 0:
+                r_l = (idx_l + 1) // 2
+                c_l = (idx_l + 1) % 2
+            lbl = tk.Label(
+                lamp_grid,
+                text=f'○ {lamp_name}: OFF',
+                bg='#212529',
+                fg='#adb5bd',
+                font=('Ubuntu Mono', 8, 'bold'),
+                anchor='w',
+                padx=6,
+                pady=3,
+            )
+            lbl.grid(row=r_l, column=c_l, columnspan=col_span, sticky='we', padx=2, pady=1)
+            self.out_lamps[out_ch] = lbl
+        lamp_grid.columnconfigure(0, weight=1)
+        lamp_grid.columnconfigure(1, weight=1)
 
         self._on_mode_switch('TEACH')
 
@@ -1253,14 +1327,14 @@ class YaskawaAuthenticPendantGUI:
 
     def _update_servo_buttons(self):
         if self.node.is_servo_powered:
-            self.btn_servo_ready.config(text='SERVO ON\n(ĐÈN SÁNG)', bg='#00e676', fg='black')
+            self.btn_servo_ready.config(text='SERVO ON\nREADY', bg='#00e676', fg='black')
         else:
-            self.btn_servo_ready.config(text='SERVO OFF\n(Bấm để Bật)', bg='#495057', fg='white')
+            self.btn_servo_ready.config(text='SERVO OFF\n(Bấm Bật)', bg='#495057', fg='white')
 
         if self.node.enable_switch_on:
-            self.btn_enable_sw.config(text='Enable Switch\n(Đang đè nhẹ: ON)', bg='#1864ab', fg='white')
+            self.btn_enable_sw.config(text='Enable Switch\n(Đè nhẹ: ON)', bg='#1864ab', fg='white')
         else:
-            self.btn_enable_sw.config(text='Enable Switch\n(Đã buông: OFF)', bg='#495057', fg='white')
+            self.btn_enable_sw.config(text='Enable Switch\n(Buông: OFF)', bg='#495057', fg='white')
 
     def _on_press_estop(self):
         self.node.estop_active = not self.node.estop_active
@@ -1276,6 +1350,19 @@ class YaskawaAuthenticPendantGUI:
             self.icon_state.config(text='[STOP]', bg='#e67700')
             self.set_human_interface_msg('Đã xoay mở khóa E-STOP. Nhấn [SERVO ON READY] để bật lại nguồn servo.')
         self._update_servo_buttons()
+
+    def _toggle_active_robot(self):
+        self.node.stop_continuous_jog()
+        self.node.active_robot = 'R2' if self.node.active_robot == 'R1' else 'R1'
+        self.node.jog_target_joints = list(self.node.current_joints)
+        if self.node.active_robot == 'R1':
+            self.btn_robot_sel.config(text='🤖 GROUP: R1', bg='#d9480f')
+        else:
+            self.btn_robot_sel.config(text='🤖 GROUP: R2', bg='#5f3dc4')
+        self._refresh_screen()
+        self.set_human_interface_msg(
+            f'Đã chuyển quyền điều khiển Teach Pendant sang CONTROL GROUP: {self.node.active_robot}!'
+        )
 
     def _on_press_coord(self):
         modes = self.node.COORD_MODES
@@ -1335,7 +1422,7 @@ class YaskawaAuthenticPendantGUI:
         if self.current_screen == 'JOB':
             jname = self.node.current_job_name
             self.gp_header.config(
-                text=f' JOB CONTENT    J:{jname}    CONTROL GROUP: R1    S:{self.cursor_idx:04d}  TOOL: 00'
+                text=f' JOB CONTENT    J:{jname}    CONTROL GROUP: {self.node.active_robot}    S:{self.cursor_idx:04d}  TOOL: 00'
             )
             lines = self.node.jobs[jname]
             for i, line in enumerate(lines):
@@ -1703,7 +1790,7 @@ class YaskawaAuthenticPendantGUI:
         x_mm, y_mm, z_mm, rx, ry, rz = self.node.get_current_pose_in_coord()
         self.live_pos_lbl.config(
             text=(
-                f'=== CURRENT POS [{self.node.coord_mode}] ===\n'
+                f'=== POS {self.node.active_robot} [{self.node.coord_mode}] ===\n'
                 f' S: {degs[0]:6.1f}°   R: {degs[3]:6.1f}°\n'
                 f' L: {degs[1]:6.1f}°   B: {degs[4]:6.1f}°\n'
                 f' U: {degs[2]:6.1f}°   T: {degs[5]:6.1f}°\n'

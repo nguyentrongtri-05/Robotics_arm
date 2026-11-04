@@ -1,9 +1,13 @@
 <?xml version="1.0" ?>
 <robot name="motomini_workcell" xmlns:xacro="http://ros.org/wiki/xacro">
   <xacro:include filename="$(find motomini_description)/urdf/motomini_macro.xacro" />
-  <xacro:motoman_motomini prefix=""/>
 
   <link name="world"/>
+
+  <!-- ================================================================== -->
+  <!-- ROBOT 1 (R1 - TRÁI): Đặt tại (X=0.0, Y=0.0, Z=0.0), hướng +X        -->
+  <!-- ================================================================== -->
+  <xacro:motoman_motomini prefix=""/>
   <joint name="world_to_base" type="fixed">
     <parent link="world"/>
     <child link="base_link"/>
@@ -34,28 +38,104 @@
     <origin xyz="0 0 0.05" rpy="0 0 0"/>
   </joint>
 
+  <!-- ================================================================== -->
+  <!-- ROBOT 2 (R2 - TRẠM BĂNG TẢI 2): Đặt tại (X=0.58, Y=0.14, Z=0.0)     -->
+  <!-- Xoay 90 độ (yaw=pi/2) hướng thẳng vào Mâm Xoay & Băng Tải 2        -->
+  <!-- ================================================================== -->
+  <xacro:motoman_motomini prefix="r2_"/>
+  <joint name="world_to_r2_base" type="fixed">
+    <parent link="world"/>
+    <child link="r2_base_link"/>
+    <origin xyz="0.58 0.14 0.0" rpy="0 0 1.5707963267948966"/>
+  </joint>
+
+  <link name="r2_vacuum_gripper">
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.012" length="0.05"/></geometry>
+      <material name="orange_gripper"><color rgba="0.9 0.4 0.1 1.0"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.012" length="0.05"/></geometry>
+    </collision>
+  </link>
+  <joint name="r2_tool0_to_gripper" type="fixed">
+    <parent link="r2_tool0"/>
+    <child link="r2_vacuum_gripper"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="r2_tcp_link"/>
+  <joint name="r2_gripper_to_tcp" type="fixed">
+    <parent link="r2_vacuum_gripper"/>
+    <child link="r2_tcp_link"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ================================================================== -->
+  <!-- 2 BĂNG TẢI ĐẶT VUÔNG GÓC NHAU (90° L-SHAPE) + MÂM XOAY TRỤC A      -->
+  <!-- - Băng tải 1 (conveyor_frame): Dọc theo trục Y tại X=0.22          -->
+  <!-- - Băng tải 2 (conveyor2_frame): Vuông góc (dọc theo trục X) Y=0.38 -->
+  <!-- ================================================================== -->
   <link name="conveyor_frame">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.15 0.80 0.06"/></geometry>
-      <material name="conveyor_green"><color rgba="0.1 0.5 0.3 1.0"/></material>
+      <geometry><box size="0.14 0.70 0.06"/></geometry>
+      <material name="conveyor_green"><color rgba="0.10 0.52 0.32 1.0"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.15 0.80 0.06"/></geometry>
+      <geometry><box size="0.14 0.70 0.06"/></geometry>
     </collision>
   </link>
   <joint name="world_to_conveyor" type="fixed">
     <parent link="world"/>
     <child link="conveyor_frame"/>
-    <origin xyz="0.25 0.0 -0.03" rpy="0 0 0"/>
+    <origin xyz="0.22 -0.14 -0.03" rpy="0 0 0"/>
   </joint>
 
-  <!-- He toa do USER#1 (user_frame_1): Dat tren mat phang bang tai (Z=0.0) va xoay 30 do -->
+  <link name="conveyor2_frame">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.14 0.70 0.06"/></geometry>
+      <material name="conveyor2_teal"><color rgba="0.08 0.45 0.55 1.0"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.14 0.70 0.06"/></geometry>
+    </collision>
+  </link>
+  <joint name="world_to_conveyor2" type="fixed">
+    <parent link="world"/>
+    <child link="conveyor2_frame"/>
+    <!-- Xoay 90 do (yaw = -pi/2) de Bang tai 2 nam VUONG GOC voi Bang tai 1 -->
+    <origin xyz="0.68 0.38 -0.03" rpy="0 0 -1.5707963267948966"/>
+  </joint>
+
+  <!-- Mâm xoay trung gian Trục A (Đặt ngay góc giao nhau 90° giữa 2 băng tải) -->
+  <link name="rotary_table_a">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.085" length="0.04"/></geometry>
+      <material name="silver_table"><color rgba="0.82 0.84 0.88 1.0"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.085" length="0.04"/></geometry>
+    </collision>
+  </link>
+  <joint name="world_to_rotary_table" type="fixed">
+    <parent link="world"/>
+    <child link="rotary_table_a"/>
+    <origin xyz="0.22 0.28 -0.02" rpy="0 0 0"/>
+  </joint>
+
+  <!-- He toa do USER#1 (user_frame_1): Dat tren mat phang bang tai 1 (Z=0.0) va xoay 30 do -->
   <link name="user_frame_1"/>
   <joint name="world_to_user_frame_1" type="fixed">
     <parent link="world"/>
     <child link="user_frame_1"/>
-    <origin xyz="0.25 0.0 0.0" rpy="0 0 0.523599"/>
+    <origin xyz="0.22 0.0 0.0" rpy="0 0 0.523599"/>
   </joint>
 </robot>
