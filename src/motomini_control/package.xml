@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>motomini_control</name>
+  <version>1.0.0</version>
+  <description>
+     Goi dieu khien va Giao dien YRC1000micro Teach Pendant (Bai TN 1) + MP3300 Machine Controller, 2 Bang tai Encoder &amp; High-Speed Ethernet (Bai TN 2, 3, 4)
+  </description>
+  <maintainer email="trongtri@local.dev">Trong Tri</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+
+  <export>
+      <build_type>ament_cmake</build_type>
+  </export>
+</package>
+

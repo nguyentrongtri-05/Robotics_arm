@@ -74,19 +74,22 @@
   </joint>
 
   <!-- ================================================================== -->
-  <!-- 2 BĂNG TẢI ĐẶT VUÔNG GÓC NHAU (90° L-SHAPE) + MÂM XOAY TRỤC A      -->
-  <!-- - Băng tải 1 (conveyor_frame): Dọc theo trục Y tại X=0.22          -->
-  <!-- - Băng tải 2 (conveyor2_frame): Vuông góc (dọc theo trục X) Y=0.38 -->
+  <!-- 2 BĂNG TẢI ĐẶT VUÔNG GÓC NHAU (90° L-SHAPE) + ĐĨA XOAY TRỤC A      -->
+  <!-- - Băng tải 1 (conveyor_frame): Dọc trục Y (từ Y=-0.42 đến Y=+0.14) -->
+  <!-- - Đĩa xoay (rotary_table_a): Đặt riêng ở khoảng trống góc vuông    -->
+  <!--   (X=0.22, Y=0.26, mặt trên cao hơn băng tải một chút Z=+0.005)    -->
+  <!-- - Băng tải 2 (conveyor2_frame): Đặt vuông góc dọc trục X           -->
+  <!--   (từ X=0.34 đến X=0.94 tại Y=0.26) -> KHÔNG BAO GIỜ CHỒNG LÊN ĐĨA -->
   <!-- ================================================================== -->
   <link name="conveyor_frame">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.14 0.70 0.06"/></geometry>
+      <geometry><box size="0.14 0.56 0.06"/></geometry>
       <material name="conveyor_green"><color rgba="0.10 0.52 0.32 1.0"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.14 0.70 0.06"/></geometry>
+      <geometry><box size="0.14 0.56 0.06"/></geometry>
     </collision>
   </link>
   <joint name="world_to_conveyor" type="fixed">
@@ -98,37 +101,37 @@
   <link name="conveyor2_frame">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.14 0.70 0.06"/></geometry>
+      <geometry><box size="0.14 0.60 0.06"/></geometry>
       <material name="conveyor2_teal"><color rgba="0.08 0.45 0.55 1.0"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.14 0.70 0.06"/></geometry>
+      <geometry><box size="0.14 0.60 0.06"/></geometry>
     </collision>
   </link>
   <joint name="world_to_conveyor2" type="fixed">
     <parent link="world"/>
     <child link="conveyor2_frame"/>
     <!-- Xoay 90 do (yaw = -pi/2) de Bang tai 2 nam VUONG GOC voi Bang tai 1 -->
-    <origin xyz="0.68 0.38 -0.03" rpy="0 0 -1.5707963267948966"/>
+    <origin xyz="0.64 0.26 -0.03" rpy="0 0 -1.5707963267948966"/>
   </joint>
 
-  <!-- Mâm xoay trung gian Trục A (Đặt ngay góc giao nhau 90° giữa 2 băng tải) -->
+  <!-- Đĩa xoay trung gian Trục A (Đặt gọn trong góc vuông giữa 2 băng tải, không đè lên băng tải) -->
   <link name="rotary_table_a">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><cylinder radius="0.085" length="0.04"/></geometry>
+      <geometry><cylinder radius="0.085" length="0.05"/></geometry>
       <material name="silver_table"><color rgba="0.82 0.84 0.88 1.0"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><cylinder radius="0.085" length="0.04"/></geometry>
+      <geometry><cylinder radius="0.085" length="0.05"/></geometry>
     </collision>
   </link>
   <joint name="world_to_rotary_table" type="fixed">
     <parent link="world"/>
     <child link="rotary_table_a"/>
-    <origin xyz="0.22 0.28 -0.02" rpy="0 0 0"/>
+    <origin xyz="0.22 0.26 -0.025" rpy="0 0 0"/>
   </joint>
 
   <!-- He toa do USER#1 (user_frame_1): Dat tren mat phang bang tai 1 (Z=0.0) va xoay 30 do -->

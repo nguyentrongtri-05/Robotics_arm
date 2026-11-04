@@ -1,0 +1,36 @@
+// ============================================================================
+// BẢN VẼ LADDER H: MAIN PROGRAM - PHẦN MỀM YASKAWA MPE720 Ver.7
+// BÀI THÍ NGHIỆM 2 & 3 + PHỤ LỤC (Bộ môn Điều khiển Tự Động - ĐHBK TPHCM)
+// ============================================================================
+// Danh sách các Rung chuẩn theo Phụ lục (Trang 3, 7, 8):
+//   Rung 0: Mạch tự giữ START (IB0C400) / STOP (IB0C401) -> Cờ chạy hệ thống (DB000000)
+//   Rung 1: Chạy Băng tải 1 (OB0C400) khi DB000000=ON và chưa có phôi tại cảm biến DI_11 (IB0C40B)
+//   Rung 2: Khi phôi chạm cảm biến DI_11 (IB0C40B=ON) -> Bật DO_01 (OB0C401) báo Robot 1 (IN#1=ON)
+//   Rung 3: Nhận xung OT#3 (IB0C40C cạnh lên) từ Robot 1 -> Kích bit MOTION_002.Run (MB001010)
+//   Rung 4: Khối hàm MSEE gọi chương trình Motion MPM002 (Program: 00002, Data: MA00100) quay Đĩa xoay +90°
+//   Rung 5: Khi Đĩa xoay đã đưa phôi sang hướng +X (MB001000) -> Bật DO_02 (OB0C402) báo Robot 2 (IN#1=ON)
+//   Rung 6: Chạy Băng tải 2 vuông góc (OB0C403) đưa phôi thành phẩm về cuối băng tải (IB0C40D)
+// ============================================================================
+
+RUNG 0 | COMMENT: Conveyor Control and Trigger Robot (Start/Stop Self-Hold - Trang 3 Phu luc)
+  BRANCH_OR: NO IB0C400 (DI_00:Start) || NO DB000000 (VAR_Start) -> NC IB0C401 (DI_01:Stop) ==> COIL DB000000 (VAR_Start)
+
+RUNG 1 | COMMENT: Run Conveyor 1 when System Started and Sensor DI_11 not blocked (Bai TN 2 Muc 1.1)
+  SERIES: NO DB000000 (VAR_Start) -> NC IB0C40B (DI_11:Conv1_Sens) ==> COIL OB0C400 (DO_00:Inv_Conv1)
+
+RUNG 2 | COMMENT: Trigger Robot 1 IN#1 (DO_01) when Part arrives at Sensor DI_11 (Bai TN 2 Muc 1.2)
+  SERIES: NO DB000000 (VAR_Start) -> NO IB0C40B (DI_11:Conv1_Sens) ==> COIL OB0C401 (DO_01:R1_IN#1)
+
+RUNG 3 | COMMENT: INPUT PROCESSING - Robot 1 OT#3 Pulse triggers Motion Start Request (Trang 7 Phu luc)
+  SERIES: NO IB0C402 (DI_02:Servo_ON) -> PULSE_UP IB0C40C (DI_12:R1_OT#3) ==> COIL MB001010 (MOTION_002.Run_Req)
+
+RUNG 4 | COMMENT: CALL MOTION PROGRAM - Execute MPM002 Rotary Table +90 deg (Trang 6 & 8 Phu luc)
+  MSEE: PROGRAM=00002 (MPM002) | DATA=MA00100 (MOTION_002)
+
+RUNG 5 | COMMENT: OUTPUT PROCESSING - Part rotated +90 deg on Rotary Table -> Trigger Robot 2 IN#1 (DO_02)
+  SERIES: NO DB000000 (VAR_Start) -> NO MB001002 (Part_On_Rotary_90) ==> COIL OB0C402 (DO_02:R2_IN#1)
+
+RUNG 6 | COMMENT: Run Perpendicular Conveyor 2 (+X) until Exit Sensor S4 (IB0C40D)
+  SERIES: NO DB000000 (VAR_Start) -> NC IB0C40D (DI_13:Conv2_Exit) ==> COIL OB0C403 (DO_03:Inv_Conv2)
+
+END

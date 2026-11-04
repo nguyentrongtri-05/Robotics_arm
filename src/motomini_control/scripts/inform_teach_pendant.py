@@ -43,7 +43,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64MultiArray
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
@@ -127,8 +127,9 @@ class InformTeachPendantNode(Node):
     # Thu tu 4 he toa do theo đúng Trang 5 & Trang 9: JOINT -> CARTESIAN -> TOOL -> USER
     COORD_MODES = ['JOINT', 'CARTESIAN', 'TOOL', 'USER']
 
-    def __init__(self):
-        super().__init__('inform_teach_pendant')
+    def __init__(self, robot_id: str = 'R1'):
+        robot_id = robot_id.upper() if robot_id.upper() in ('R1', 'R2') else 'R1'
+        super().__init__(f'inform_teach_pendant_{robot_id.lower()}')
 
         self.traj_client = ActionClient(
             self,
@@ -159,9 +160,21 @@ class InformTeachPendantNode(Node):
 
         self.dout1_pub = self.create_publisher(Bool, '/yaskawa/dout1', 10)
         self.dout2_pub = self.create_publisher(Bool, '/yaskawa/dout2', 10)
+        self.dout3_pub = self.create_publisher(Bool, '/yaskawa/dout3', 10)
         self.din1_sub = self.create_subscription(
             Bool, '/yaskawa/din1', self.din1_callback, 10
         )
+        self.din2_sub = self.create_subscription(
+            Bool, '/yaskawa/din2', self.din2_callback, 10
+        )
+        # Nhận Hệ tọa độ USER gắn trực tiếp vào Đối tượng đang di chuyển + Vận tốc Feedforward (50Hz Không Trễ)
+        self.obj_uf_sub = self.create_subscription(
+            Float64MultiArray, '/conveyor/object_user_frame', self.obj_uf_callback, 10
+        )
+        self.obj_world_pose = [0.22, 0.0, 0.04, 0.0]   # [x, y, z_top, yaw]
+        self.obj_world_vel = [0.0, 0.0, 0.0]           # [vx, vy, wz]
+        self.user_object_lock = False                  # Chế độ khóa bám theo Hệ USER của đối tượng không trễ
+        self.user_target_offset = [0.0, 0.0, 0.045]    # Tọa độ mục tiêu trong Hệ USER của đối tượng (mặc định: tâm vật, cao +45mm)
 
         # Bien Byte B000..B019, Integer I000..I009 (Trang 15, 16)
         self.b_vars = {f'B{i:03d}': 0 for i in range(20)}
@@ -169,7 +182,7 @@ class InformTeachPendantNode(Node):
 
         # Gioi han khop chuan Bang 1 (Trang 2):
         # S: -170..+170, L: -85..+90, U: -50..+90, R: -140..+140, B: -30..+210, T: -360..+360
-        self.active_robot = 'R1'         # 'R1' (Robot 1 - Trái) hoặc 'R2' (Robot 2 - Phải)
+        self.active_robot = robot_id     # 'R1' (Robot 1 - Băng tải 1) hoặc 'R2' (Robot 2 - Băng tải 2)
         self.r1_joint_names = [
             'joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6'
         ]
@@ -205,22 +218,40 @@ class InformTeachPendantNode(Node):
         self.shift_held = False
         self.interlock_held = False
 
-        # Cac diem P000 -> P014 theo Hinh 13 (Trang 16)
-        self.points = {
-            'P000': [0.000, 0.000, 0.000, 0.000, 0.000, 0.000],   # Home Pos (Hinh 11)
-            'P001': [0.000, 0.436, 0.175, 0.000, 0.262, 0.000],   # Tren diem gap A1 / Bang tai (+50mm)
-            'P002': [0.000, 0.655, -0.020, 0.000, 0.675, 0.000],  # Tiep xuc vat tai A1 / Bang tai
-            'P003': [-0.250, 0.436, 0.175, 0.000, 0.262, 0.000],  # Tren diem A2 (+50mm)
-            'P004': [-0.250, 0.655, -0.020, 0.000, 0.675, 0.000], # Tiep xuc vat tai A2
-            'P005': [0.250, 0.436, 0.175, 0.000, 0.262, 0.000],   # Tren diem A3 (+50mm)
-            'P006': [0.250, 0.655, -0.020, 0.000, 0.675, 0.000],  # Tiep xuc vat tai A3
-            'P007': [1.571, 0.436, 0.175, 0.000, 0.262, 0.000],   # Tren o tha B (+50mm)
-            'P008': [1.571, 0.630, 0.000, 0.000, 0.630, 0.000],   # Tha vat tai o B (Tang 1)
-            'P009': [1.571, 0.560, 0.060, 0.000, 0.500, 0.000],   # Xep chong tai o B (Tang 2)
-            'P010': [1.571, 0.490, 0.120, 0.000, 0.370, 0.000],   # Xep chong tai o B (Tang 3)
-            'P011': [1.200, 0.436, 0.175, 0.000, 0.262, 0.000],   # Tren o tha C (+50mm)
-            'P012': [1.200, 0.630, 0.000, 0.000, 0.630, 0.000],   # Tha vat tai o C
-        }
+        # Cac diem P000 -> P012 rieng biet cho tung Robot R1 & R2
+        if self.active_robot == 'R1':
+            self.points = {
+                'P000': [0.000, 0.000, 0.000, 0.000, 0.000, 0.000],   # Home Pos R1 (Hinh 11)
+                'P001': [0.000, 0.420, 0.160, 0.000, 0.260, 0.000],   # R1: Tren Bang tai 1 (S2) (+50mm)
+                'P002': [0.000, 0.640, -0.020, 0.000, 0.660, 0.000],  # R1: Gap vat tai Bang tai 1 (S2)
+                'P003': [-0.250, 0.436, 0.175, 0.000, 0.262, 0.000],  # Tren diem A2 (+50mm)
+                'P004': [-0.250, 0.655, -0.020, 0.000, 0.675, 0.000], # Tiep xuc vat tai A2
+                'P005': [0.250, 0.436, 0.175, 0.000, 0.262, 0.000],   # Tren diem A3 (+50mm)
+                'P006': [0.250, 0.655, -0.020, 0.000, 0.675, 0.000],  # Tiep xuc vat tai A3
+                'P007': [0.775, 0.540, 0.220, 0.000, 0.320, 0.000],   # R1: Tren Đĩa xoay Trục A (+50mm)
+                'P008': [0.775, 0.720, 0.050, 0.000, 0.670, 0.000],   # R1: Đặt vật lên Đĩa xoay Trục A
+                'P009': [0.775, 0.680, 0.090, 0.000, 0.590, 0.000],   # Xếp chồng tại Đĩa xoay (Tầng 2)
+                'P010': [0.775, 0.620, 0.140, 0.000, 0.480, 0.000],   # Xếp chồng tại Đĩa xoay (Tầng 3)
+                'P011': [1.200, 0.436, 0.175, 0.000, 0.262, 0.000],   # Tren o tha C (+50mm)
+                'P012': [1.200, 0.630, 0.000, 0.000, 0.630, 0.000],   # Tha vat tai o C
+            }
+        else:
+            # Diem P000..P012 danh rieng cho Robot 2 (R2: Gap tu Đĩa xoay Trục A -> Đặt sang Băng tải 2 vuông góc)
+            self.points = {
+                'P000': [0.000, 0.000, 0.000, 0.000, 0.000, 0.000],   # Home Pos R2
+                'P001': [1.200, 0.540, 0.220, 0.000, 0.320, 0.000],   # R2: Tren Đĩa xoay Trục A (+50mm)
+                'P002': [1.200, 0.720, 0.050, 0.000, 0.670, 0.000],   # R2: Gắp vật từ Đĩa xoay Trục A
+                'P003': [1.100, 0.540, 0.220, 0.000, 0.320, 0.000],   # R2: Điểm A2 trên Đĩa xoay
+                'P004': [1.100, 0.720, 0.050, 0.000, 0.670, 0.000],   # R2: Chạm điểm A2
+                'P005': [1.300, 0.540, 0.220, 0.000, 0.320, 0.000],   # R2: Điểm A3 trên Đĩa xoay
+                'P006': [1.300, 0.720, 0.050, 0.000, 0.670, 0.000],   # R2: Chạm điểm A3
+                'P007': [0.980, 0.460, 0.170, 0.000, 0.290, 0.000],   # R2: Tren đầu Băng tải 2 vuông góc (+50mm)
+                'P008': [0.980, 0.660, -0.010, 0.000, 0.670, 0.000],  # R2: Đặt vật lên Băng tải 2 vuông góc
+                'P009': [0.980, 0.600, 0.050, 0.000, 0.550, 0.000],   # R2: Xếp chồng Băng tải 2 (Tầng 2)
+                'P010': [0.980, 0.540, 0.110, 0.000, 0.430, 0.000],   # R2: Xếp chồng Băng tải 2 (Tầng 3)
+                'P011': [0.000, 0.460, 0.170, 0.000, 0.290, 0.000],   # R2: Tren giữa Băng tải 2 (+50mm)
+                'P012': [0.000, 0.660, -0.010, 0.000, 0.670, 0.000],  # R2: Đặt vật giữa Băng tải 2
+            }
 
         # Thu vien cac JOB theo đúng Trang 16 & 17 (MAIN, PICK-A1, PLACE-B, CONVEYOR-AUTO)
         self.jobs = {
@@ -252,6 +283,18 @@ class InformTeachPendantNode(Node):
                 'MOVJ P000 VJ=50.00',
                 'END',
             ],
+            'PICK-USER-UF1': [
+                'NOP',
+                'WAIT IN#(1)=ON',
+                'MOVL UF#(1) (0,0,45) V=60.0',
+                'MOVL UF#(1) (0,0,0) V=25.0',
+                'DOUT OT#(1) ON',
+                'TIMER T=0.35',
+                'MOVL UF#(1) (0,0,50) V=50.0',
+                'CALL JOB:PLACE-B',
+                'PULSE OT#(3) T=0.10',
+                'END',
+            ],
         }
         self.current_job_name = 'MAIN'
 
@@ -260,11 +303,11 @@ class InformTeachPendantNode(Node):
         self.status_callback = None
         self.highlight_callback = None
 
-        # JOG Lien Tuc (25 Hz)
+        # JOG & Object USER-Frame Tracking Liên Tục 50 Hz (dt = 0.02s - Không trễ)
         self.jog_active_axis = None
         self.jog_direction = 0.0
         self.jog_target_joints = None
-        self.jog_dt = 0.04
+        self.jog_dt = 0.020
         self.jog_timer = self.create_timer(self.jog_dt, self._continuous_jog_loop)
 
     @property
@@ -292,7 +335,45 @@ class InformTeachPendantNode(Node):
         return self.servo_ready and self.enable_switch_on
 
     def din1_callback(self, msg: Bool):
-        self.din[1] = msg.data
+        if self.active_robot == 'R1':
+            self.din[1] = msg.data
+        else:
+            self.din[2] = msg.data
+
+    def din2_callback(self, msg: Bool):
+        if self.active_robot == 'R2':
+            self.din[1] = msg.data
+        else:
+            self.din[2] = msg.data
+
+    def obj_uf_callback(self, msg: Float64MultiArray):
+        if len(msg.data) >= 7:
+            self.obj_world_pose = [msg.data[0], msg.data[1], msg.data[2], msg.data[3]]
+            self.obj_world_vel = [msg.data[4], msg.data[5], msg.data[6]]
+
+    def get_object_user_frame_in_base(self):
+        """
+        Chuyển đổi Hệ tọa độ USER gắn trên Đối tượng (từ World frame sang Base frame của R1 hoặc R2)
+        cùng вектор vận tốc Feedforward của đối tượng để điều khiển bám không có độ trễ!
+        """
+        xw, yw, zw, yaw_w = self.obj_world_pose
+        vx_w, vy_w, wz_w = self.obj_world_vel
+        T_w_obj = _trans(xw, yw, zw) @ _rot_z(yaw_w)
+
+        if self.active_robot == 'R1':
+            T_base_obj = T_w_obj
+            v_base = np.array([vx_w, vy_w, 0.0, 0.0, 0.0, wz_w], dtype=float)
+        else:
+            # Gốc Robot 2 (R2) đặt tại World (0.58, 0.14, 0.0) và xoay +90 độ (+pi/2)
+            T_w_r2 = _trans(0.58, 0.14, 0.0) @ _rot_z(math.pi / 2.0)
+            T_r2_w = np.linalg.inv(T_w_r2)
+            T_base_obj = T_r2_w @ T_w_obj
+            R_r2_w = T_r2_w[:3, :3]
+            v_lin_base = R_r2_w @ np.array([vx_w, vy_w, 0.0], dtype=float)
+            v_base = np.array([v_lin_base[0], v_lin_base[1], v_lin_base[2], 0.0, 0.0, wz_w], dtype=float)
+
+        T_obj_base = np.linalg.inv(T_base_obj)
+        return T_base_obj, T_obj_base, v_base
 
     def joint_state_callback(self, msg: JointState):
         name_to_pos = dict(zip(msg.name, msg.position))
@@ -303,14 +384,17 @@ class InformTeachPendantNode(Node):
 
     def set_dout(self, ch: int, state_on: bool):
         self.dout[ch] = state_on
+        msg = Bool()
+        msg.data = state_on
         if ch == 1:
-            msg = Bool()
-            msg.data = state_on
-            self.dout1_pub.publish(msg)
+            if self.active_robot == 'R1':
+                self.dout1_pub.publish(msg)
+            else:
+                self.dout2_pub.publish(msg)
         elif ch == 2:
-            msg = Bool()
-            msg.data = state_on
             self.dout2_pub.publish(msg)
+        elif ch in (3, 5):
+            self.dout3_pub.publish(msg)
 
     def pulse_dout(self, ch: int, duration_sec: float = 1.0):
         def _p():
@@ -327,7 +411,8 @@ class InformTeachPendantNode(Node):
     def get_current_pose_in_coord(self):
         T_tcp, _ = fk_motomini(self.current_joints)
         if self.coord_mode == 'USER':
-            T_rel = T_USER1_WORLD @ T_tcp
+            _, T_obj_base, _ = self.get_object_user_frame_in_base()
+            T_rel = T_obj_base @ T_tcp
         else:
             T_rel = T_tcp
         x_mm = T_rel[0, 3] * 1000.0
@@ -397,7 +482,9 @@ class InformTeachPendantNode(Node):
             self.active_traj_pub.publish(msg)
 
     def _continuous_jog_loop(self):
-        if self.jog_active_axis is None or self.is_running_job or not self.is_servo_powered:
+        if self.is_running_job or not self.is_servo_powered:
+            return
+        if self.jog_active_axis is None and not self.user_object_lock:
             return
 
         spd_scale = self.get_effective_speed() / 100.0
@@ -408,38 +495,68 @@ class InformTeachPendantNode(Node):
             self.jog_target_joints = list(self.current_joints)
         q_curr = list(self.jog_target_joints)
 
-        if self.coord_mode == 'JOINT':
-            omega = 1.4 * spd_scale * d
+        T_base_obj, T_obj_base, v_obj_base = self.get_object_user_frame_in_base()
+        R_user = T_base_obj[:3, :3]
+
+        if self.coord_mode == 'JOINT' and not self.user_object_lock:
+            omega = 1.6 * spd_scale * d
             candidate = list(q_curr)
             low, high = self.joint_limits[axis]
             candidate[axis] = max(low, min(high, candidate[axis] + omega * self.jog_dt))
+            q_dot_cmd = [omega if i == axis else 0.0 for i in range(6)]
         else:
-            v_lin_max = 0.14 * spd_scale
-            v_ang_max = 1.20 * spd_scale
+            v_lin_max = 0.16 * spd_scale
+            v_ang_max = 1.40 * spd_scale
             twist_local = np.zeros(6)
-            if axis < 3:
-                twist_local[axis] = v_lin_max * d
-            else:
-                twist_local[axis] = v_ang_max * d
+            if axis is not None:
+                if axis < 3:
+                    twist_local[axis] = v_lin_max * d
+                else:
+                    twist_local[axis] = v_ang_max * d
 
             J_world, T_tcp = compute_jacobian_world(q_curr)
             R_tcp = T_tcp[:3, :3]
-            R_user = T_WORLD_USER1[:3, :3]
+            p_tcp = T_tcp[:3, 3]
 
             twist_world = np.zeros(6)
-            if self.coord_mode == 'CARTESIAN':
+            if self.user_object_lock:
+                # 1. Cập nhật offset mục tiêu (x_u, y_u, z_u) ngay trong Hệ USER của Đối tượng khi bấm phím JOG
+                if axis is not None and axis < 3:
+                    self.user_target_offset[axis] += twist_local[axis] * self.jog_dt
+                    self.user_target_offset[2] = max(0.0, min(0.16, self.user_target_offset[2]))
+                # 2. Tọa độ mục tiêu tức thời trong Base frame = T_base_obj * p_offset_user
+                p_des_base = T_base_obj[:3, 3] + R_user @ np.array(self.user_target_offset, dtype=float)
+                e_pos = p_des_base - p_tcp
+                # 3. Luật điều khiển Bù Vận Tốc Feedforward (v_obj_base) + Khóa vị trí Kp*e_pos -> KHÔNG ĐỘ TRỄ!
+                kp_lock = 14.0
+                v_cmd_lin = v_obj_base[:3] + R_user @ twist_local[:3] + kp_lock * e_pos
+                v_np = np.linalg.norm(v_cmd_lin)
+                if v_np > 0.45:
+                    v_cmd_lin = v_cmd_lin * (0.45 / v_np)
+                twist_world[:3] = v_cmd_lin
+                # Giữ đầu hút luôn hướng thẳng đứng xuống đối tượng
+                z_des = np.array([0.0, 0.0, -1.0])
+                z_cur = R_tcp[:, 2]
+                e_rot = np.cross(z_cur, z_des)
+                twist_world[3:] = 8.0 * e_rot
+            elif self.coord_mode == 'CARTESIAN':
                 twist_world = twist_local
             elif self.coord_mode == 'TOOL':
                 twist_world[:3] = R_tcp @ twist_local[:3]
                 twist_world[3:] = R_tcp @ twist_local[3:]
             elif self.coord_mode == 'USER':
-                twist_world[:3] = R_user @ twist_local[:3]
-                twist_world[3:] = R_user @ twist_local[3:]
+                # Trong Hệ USER: Trục X, Y, Z xoay theo hướng Đối tượng + Cộng bù vận tốc Feedforward của Đối tượng
+                twist_world[:3] = v_obj_base[:3] + R_user @ twist_local[:3]
+                twist_world[3:] = v_obj_base[3:] + R_user @ twist_local[3:]
 
             lam = 0.025
             JJT = J_world @ J_world.T + (lam ** 2) * np.eye(6)
-            dq = J_world.T @ np.linalg.solve(JJT, twist_world * self.jog_dt)
-            candidate = [q_curr[i] + float(dq[i]) for i in range(6)]
+            q_dot_vec = J_world.T @ np.linalg.solve(JJT, twist_world)
+            q_dot_cmd = [float(q_dot_vec[i]) for i in range(6)]
+            candidate = [
+                max(self.joint_limits[i][0], min(self.joint_limits[i][1], q_curr[i] + q_dot_cmd[i] * self.jog_dt))
+                for i in range(6)
+            ]
 
         is_safe, reason = self.check_safety_collision(candidate)
         if not is_safe:
@@ -451,8 +568,9 @@ class InformTeachPendantNode(Node):
         msg.joint_names = self.joint_names
         pt = JointTrajectoryPoint()
         pt.positions = list(self.jog_target_joints)
-        pt.velocities = [0.0] * 6
-        pt.time_from_start = Duration(seconds=0, nanoseconds=80_000_000).to_msg()
+        # Truyền trực tiếp vận tốc khớp tức thời q_dot_cmd & time_from_start=22ms để bộ nội suy Spline chạy 0ms trễ!
+        pt.velocities = q_dot_cmd
+        pt.time_from_start = Duration(seconds=0, nanoseconds=22_000_000).to_msg()
         msg.points = [pt]
         self.active_traj_pub.publish(msg)
 
@@ -504,8 +622,82 @@ class InformTeachPendantNode(Node):
             time.sleep(0.02)
         return True
 
+    def move_to_user_frame_offset(self, dx_mm=0.0, dy_mm=0.0, dz_mm=0.0, speed_percent=50.0):
+        """
+        Di chuyển đầu hút TCP tới điểm (dx_mm, dy_mm, dz_mm) trong Hệ tọa độ USER [UF#(1)]
+        do Code của Người Dùng tính trên GUI MP3300 (có bù vận tốc Feedforward 50 Hz để gắp cả khi băng tải đang chạy).
+        """
+        if not self.is_servo_powered:
+            self.log_status('! Không thể di chuyển UF#(1): Nguồn SERVO đang tắt (OFF).')
+            return False
+
+        offset_m = np.array([dx_mm / 1000.0, dy_mm / 1000.0, dz_mm / 1000.0], dtype=float)
+        spd_scale = max(0.2, min(1.5, float(speed_percent) / 50.0))
+        q_curr = list(self.current_joints)
+        t_start = time.time()
+        settled_count = 0
+
+        while rclpy.ok() and not self.stop_requested and (time.time() - t_start) < 3.0:
+            T_base_obj, _, v_obj_base = self.get_object_user_frame_in_base()
+            R_user = T_base_obj[:3, :3]
+            p_des = T_base_obj[:3, 3] + R_user @ offset_m
+
+            J_world, T_tcp = compute_jacobian_world(q_curr)
+            R_tcp = T_tcp[:3, :3]
+            p_tcp = T_tcp[:3, 3]
+
+            e_pos = p_des - p_tcp
+            dist_err = float(np.linalg.norm(e_pos))
+            if dist_err < 0.004:
+                settled_count += 1
+                if settled_count >= 3:
+                    break
+            else:
+                settled_count = 0
+
+            v_cmd_lin = v_obj_base[:3] + (10.0 * spd_scale) * e_pos
+            v_np = np.linalg.norm(v_cmd_lin)
+            v_max = 0.35 * spd_scale
+            if v_np > v_max:
+                v_cmd_lin = v_cmd_lin * (v_max / v_np)
+
+            z_des = np.array([0.0, 0.0, -1.0])
+            z_cur = R_tcp[:, 2]
+            e_rot = np.cross(z_cur, z_des)
+
+            twist_world = np.zeros(6)
+            twist_world[:3] = v_cmd_lin
+            twist_world[3:] = 7.0 * e_rot
+
+            lam = 0.025
+            JJT = J_world @ J_world.T + (lam ** 2) * np.eye(6)
+            q_dot_vec = J_world.T @ np.linalg.solve(JJT, twist_world)
+            q_dot_cmd = [float(q_dot_vec[i]) for i in range(6)]
+            candidate = [
+                max(self.joint_limits[i][0], min(self.joint_limits[i][1], q_curr[i] + q_dot_cmd[i] * 0.020))
+                for i in range(6)
+            ]
+            is_safe, reason = self.check_safety_collision(candidate)
+            if not is_safe:
+                self.log_status(reason)
+                return False
+
+            q_curr = candidate
+            self.jog_target_joints = list(q_curr)
+            msg = JointTrajectory()
+            msg.joint_names = self.joint_names
+            pt = JointTrajectoryPoint()
+            pt.positions = list(q_curr)
+            pt.velocities = q_dot_cmd
+            pt.time_from_start = Duration(seconds=0, nanoseconds=22_000_000).to_msg()
+            msg.points = [pt]
+            self.active_traj_pub.publish(msg)
+            time.sleep(0.020)
+
+        return True
+
     def execute_inform_line(self, raw_line: str):
-        """Thuc thi day du tap lenh INFORM theo Bang 4 (Trang 15, 16, 17)."""
+        """Thuc thi day du tap lenh INFORM theo Bang 4 (Trang 15, 16, 17) & Lenh UF#(1) do nguoi dung code."""
         line = raw_line.strip().upper()
         if not line or line.startswith("'") or line.startswith('*') or line in ('NOP', 'END', 'RET'):
             return
@@ -523,17 +715,51 @@ class InformTeachPendantNode(Node):
         if cmd in ('MOVJ', 'MOVL', 'MOVC', 'MOVS'):
             if len(tokens) < 2:
                 return
-            p_name = tokens[1]
-            if p_name not in self.points:
-                self.log_status(f'! Lỗi: Chưa có dữ liệu điểm {p_name}!')
-                return
             speed = 50.0
-            for t in tokens[2:]:
+            for t in tokens[1:]:
                 if '=' in t and (t.startswith('VJ=') or t.startswith('V=') or t.startswith('VL=')):
                     try:
                         speed = float(t.split('=')[1])
                     except ValueError:
                         pass
+
+            # Hỗ trợ đi theo Hệ tọa độ USER [UF#(1)] do Code của người dùng tạo trên GUI:
+            # Cú pháp: MOVL UF#(1) (0,0,45) V=60.0  hoặc  MOVL UF#(1) Z=45.0 V=60.0
+            if 'UF#(' in line or 'UF#' in line:
+                dx_mm, dy_mm, dz_mm = 0.0, 0.0, 0.0
+                for t in tokens[1:]:
+                    if t.startswith('(') and t.endswith(')'):
+                        parts = t.strip('()').split(',')
+                        if len(parts) == 3:
+                            try:
+                                dx_mm, dy_mm, dz_mm = float(parts[0]), float(parts[1]), float(parts[2])
+                            except ValueError:
+                                pass
+                    elif t.startswith('X='):
+                        try:
+                            dx_mm = float(t.split('=')[1])
+                        except ValueError:
+                            pass
+                    elif t.startswith('Y='):
+                        try:
+                            dy_mm = float(t.split('=')[1])
+                        except ValueError:
+                            pass
+                    elif t.startswith('Z='):
+                        try:
+                            dz_mm = float(t.split('=')[1])
+                        except ValueError:
+                            pass
+                self.log_status(
+                    f'Thực thi: {cmd} UF#(1) ({dx_mm:.0f},{dy_mm:.0f},{dz_mm:.0f} mm) theo tọa độ Code của bạn!'
+                )
+                self.move_to_user_frame_offset(dx_mm, dy_mm, dz_mm, speed)
+                return
+
+            p_name = tokens[1]
+            if p_name not in self.points:
+                self.log_status(f'! Lỗi: Chưa có dữ liệu điểm {p_name}!')
+                return
             self.log_status(f'Thực thi: {cmd} {p_name} (Speed={speed}%)')
             self.move_to_joints(self.points[p_name], speed)
 
@@ -621,14 +847,22 @@ class YaskawaAuthenticPendantGUI:
         self.node.status_callback = self.set_human_interface_msg
 
         self.root = tk.Tk()
-        self.root.title('YASKAWA YRC1000micro Programming Pendant')
-        # Tu dong lay do phan giai man hinh laptop va dat cua so chiem NUA PHAI MAN HINH (50% Width)
+        if self.node.active_robot == 'R1':
+            self.root.title('YASKAWA YRC1000micro Programming Pendant #1 - [ROBOT 1 (R1): Băng tải 1 -> Đĩa xoay]')
+        else:
+            self.root.title('YASKAWA YRC1000micro Programming Pendant #2 - [ROBOT 2 (R2): Đĩa xoay -> Băng tải 2]')
+        # Tu dong lay do phan giai man hinh laptop va dat 2 cua so Teach Pendant
         scr_w = self.root.winfo_screenwidth()
         scr_h = self.root.winfo_screenheight()
         half_w = max(860, scr_w // 2)
         win_h = max(760, scr_h - 65)
-        pos_x = scr_w - half_w
-        self.root.geometry(f'{half_w}x{win_h}+{pos_x}+0')
+        if self.node.active_robot == 'R1':
+            pos_x = 0
+            pos_y = 0
+        else:
+            pos_x = scr_w - half_w
+            pos_y = 0
+        self.root.geometry(f'{half_w}x{win_h}+{pos_x}+{pos_y}')
         self.root.configure(bg='#3a3d42')
 
         # Con tro dong lenh tren JOB CONTENT (Address Cursor)
@@ -661,7 +895,7 @@ class YaskawaAuthenticPendantGUI:
 
         # Mode Switch (REMOTE / PLAY / TEACH)
         ms_frame = tk.LabelFrame(
-            top_housing, text=' Mode Switch ', fg='#d0d7de', bg='#2c3036', font=('Ubuntu', 8, 'bold'), padx=6, pady=2
+            top_housing, text='Mode Switch ', fg='#d0d7de', bg='#2c3036', font=('Ubuntu', 8, 'bold'), padx=6, pady=2
         )
         ms_frame.pack(side=tk.LEFT, padx=4)
         self.mode_btns = {}
@@ -707,7 +941,7 @@ class YaskawaAuthenticPendantGUI:
         estop_ring.pack(side=tk.RIGHT, padx=6)
         self.btn_estop = tk.Button(
             estop_ring,
-            text='🛑 E-STOP\n(Nhấn/Xoay)',
+            text='E-STOP\n(Nhấn/Xoay)',
             bg='#d50000',
             fg='white',
             font=('Ubuntu', 9, 'bold'),
@@ -768,8 +1002,8 @@ class YaskawaAuthenticPendantGUI:
 
         self.btn_robot_sel = tk.Button(
             status_icons,
-            text='🤖 GROUP: R1',
-            bg='#d9480f',
+            text=f'GROUP: {self.node.active_robot}',
+            bg='#d9480f' if self.node.active_robot == 'R1' else '#5f3dc4',
             fg='white',
             font=('Ubuntu Mono', 8, 'bold'),
             padx=4,
@@ -791,11 +1025,11 @@ class YaskawaAuthenticPendantGUI:
 
         self.menu_nav_btns = {}
         for nav_id, nav_label in [
-            ('JOB', '📋 JOB\n(Chương trình)'),
-            ('VARIABLE', '🔢 VARIABLE\n(Điểm P000..)'),
-            ('IN/OUT', '🔌 IN/OUT\n(Đọc/Ghi I/O)'),
-            ('ROBOT', '🦾 ROBOT\n(Work Home)'),
-            ('POS_MON', '📐 POSITION\n(Tọa độ thực)'),
+            ('JOB', ' JOB\n(Chương trình)'),
+            ('VARIABLE', ' VARIABLE\n(Điểm P000..)'),
+            ('IN/OUT', ' IN/OUT\n(Đọc/Ghi I/O)'),
+            ('ROBOT', ' ROBOT\n(Work Home)'),
+            ('POS_MON', ' POSITION\n(Tọa độ thực)'),
         ]:
             b = tk.Button(
                 self.main_menu_col,
@@ -831,7 +1065,7 @@ class YaskawaAuthenticPendantGUI:
         # Header xanh dương đậm của General Purpose Area (Giống hệt Hình 6, 10, 13)
         self.gp_header = tk.Label(
             self.gp_area,
-            text=' JOB CONTENT    J:MAIN    CONTROL GROUP: R1    S:0000  TOOL: 00',
+            text='JOB CONTENT    J:MAIN    CONTROL GROUP: R1    S:0000  TOOL: 00',
             bg='#1d3587',
             fg='white',
             font=('Ubuntu Mono', 10, 'bold'),
@@ -879,20 +1113,22 @@ class YaskawaAuthenticPendantGUI:
         # Khung INFORM LIST (Ẩn/Hiện khi bấm nút [INFORM LIST] - Trang 13)
         self.inform_popup = tk.LabelFrame(
             self.lcd_right_sub,
-            text=' INFORM LIST (Chọn lệnh -> Buffer) ',
+            text='INFORM LIST (Chọn lệnh -> Buffer) ',
             bg='#dee2e6',
             fg='#1d3587',
             font=('Ubuntu', 8, 'bold'),
         )
         for grp_txt, sample_cmd in [
+            ('USER: MOVL UF#(1) Z=45', 'MOVL UF#(1) (0,0,45) V=60.0'),
+            ('USER: MOVL UF#(1) Z=0', 'MOVL UF#(1) (0,0,0) V=25.0'),
             ('MOTION: MOVJ', 'MOVJ P001 VJ=50.00'),
             ('MOTION: MOVL', 'MOVL P002 V=25.00 PL=0'),
             ('IN/OUT: DOUT ON', 'DOUT OT#(1) ON'),
             ('IN/OUT: DOUT OFF', 'DOUT OT#(1) OFF'),
             ('IN/OUT: WAIT IN#1', 'WAIT IN#(1)=ON'),
-            ('IN/OUT: PULSE Q4', 'PULSE OT#(5) T=1.00'),
+            ('IN/OUT: PULSE OT#3', 'PULSE OT#(3) T=0.10'),
             ('CONTROL: TIMER', 'TIMER T=0.50'),
-            ('CONTROL: CALL JOB', 'CALL JOB:PICK-A1'),
+            ('CONTROL: CALL JOB', 'CALL JOB:PICK-USER-UF1'),
         ]:
             tk.Button(
                 self.inform_popup,
@@ -998,7 +1234,7 @@ class YaskawaAuthenticPendantGUI:
             command=lambda: self._move_cursor(-1)
         ).grid(row=0, column=1, padx=1, pady=1)
         tk.Button(
-            nav_grid, text='PAGE\n📄', width=5, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
+            nav_grid, text='PAGE\n', width=5, bg='#495057', fg='white', font=('Ubuntu', 7, 'bold'),
             command=self._cycle_screens
         ).grid(row=0, column=2, padx=1, pady=1)
 
@@ -1011,7 +1247,7 @@ class YaskawaAuthenticPendantGUI:
             command=lambda: self._move_cursor(+1)
         ).grid(row=1, column=1, padx=1, pady=1)
         tk.Button(
-            nav_grid, text='SELECT\n⭕', width=5, bg='#1864ab', fg='white', font=('Ubuntu', 7, 'bold'),
+            nav_grid, text='SELECT\n', width=5, bg='#1864ab', fg='white', font=('Ubuntu', 7, 'bold'),
             command=self._on_press_select
         ).grid(row=1, column=2, padx=1, pady=1)
 
@@ -1025,7 +1261,7 @@ class YaskawaAuthenticPendantGUI:
 
         tk.Button(
             top_axis_row,
-            text='🌐 [COORD]\nJnt/Cart/Tl/Usr',
+            text='[COORD]\nJnt/Cart/Tl/Usr',
             bg='#fcc419',
             fg='black',
             font=('Ubuntu', 8, 'bold'),
@@ -1185,15 +1421,26 @@ class YaskawaAuthenticPendantGUI:
         top_cp_hdr.pack(fill=tk.X, pady=(0, 3))
         tk.Label(
             top_cp_hdr,
-            text='🎛️ YASKAWA CONTROL PANEL (Hình 14 - Trang 17: Bảng Công Tắc I4..I7 & Đèn Báo Q4..Q7)',
+            text='YASKAWA CONTROL PANEL (Hình 14 - Trang 17: Bảng Công Tắc I4..I7 & Đèn Báo Q4..Q7)',
             fg='#1d3587',
             bg='#d0d7de',
             font=('Ubuntu', 9, 'bold'),
         ).pack(side=tk.LEFT)
 
+        self.btn_user_lock = tk.Button(
+            top_cp_hdr,
+            text='BÁM HỆ USER ĐỐI TƯỢNG (0ms TRỄ): OFF',
+            bg='#e67700',
+            fg='white',
+            font=('Ubuntu', 8, 'bold'),
+            padx=6,
+            command=self._toggle_user_object_lock,
+        )
+        self.btn_user_lock.pack(side=tk.RIGHT, padx=4)
+
         tk.Button(
             top_cp_hdr,
-            text='🏠 Về Work Home Pos (Hình 11 - Tất cả khớp 0°)',
+            text='Về Work Home (0°)',
             bg='#2b8a3e',
             fg='white',
             font=('Ubuntu', 8, 'bold'),
@@ -1207,7 +1454,7 @@ class YaskawaAuthenticPendantGUI:
 
         tk.Button(
             top_cp_hdr,
-            text='🔌 Bật/Tắt nhanh OUT#1 ([INTERLOCK]+[SELECT])',
+            text='Bật/Tắt OUT#1 (Hút)',
             bg='#1864ab',
             fg='white',
             font=('Ubuntu', 8, 'bold'),
@@ -1220,7 +1467,7 @@ class YaskawaAuthenticPendantGUI:
 
         # Cột Trái Control Panel: INPUT SWITCHES (IN#1 + Công tắc I4..I7)
         in_box = tk.LabelFrame(
-            cp_cols, text=' INPUT SWITCHES (I4..I7 -> IN#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=3
+            cp_cols, text='INPUT SWITCHES (I4..I7 -> IN#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=3
         )
         in_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
 
@@ -1258,7 +1505,7 @@ class YaskawaAuthenticPendantGUI:
 
         # Cột Phải Control Panel: OUTPUT LAMPS (OUT#1 + Q4..Q7)
         out_box = tk.LabelFrame(
-            cp_cols, text=' OUTPUT LAMPS (Q4..Q7 -> OUT#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=3
+            cp_cols, text='OUTPUT LAMPS (Q4..Q7 -> OUT#5..8) ', bg='#d0d7de', fg='black', font=('Ubuntu', 8, 'bold'), padx=6, pady=3
         )
         out_box.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(4, 0))
 
@@ -1342,11 +1589,11 @@ class YaskawaAuthenticPendantGUI:
             self.node.stop_requested = True
             self.node.is_running_job = False
             self.node.stop_continuous_jog()
-            self.btn_estop.config(text='🛑 ĐANG E-STOP!\n(Bấm để Xoay mở)', bg='#ff1744')
+            self.btn_estop.config(text='ĐANG E-STOP!\n(Bấm để Xoay mở)', bg='#ff1744')
             self.icon_state.config(text='[E-STOP]', bg='#d50000')
             self.set_human_interface_msg('! EMERGENCY STOP: Đã ngắt khẩn cấp nguồn động cơ servo! Bấm lại E-STOP để xoay thoát.')
         else:
-            self.btn_estop.config(text='🛑 E-STOP\n(Nhấn/Xoay)', bg='#d50000')
+            self.btn_estop.config(text='E-STOP\n(Nhấn/Xoay)', bg='#d50000')
             self.icon_state.config(text='[STOP]', bg='#e67700')
             self.set_human_interface_msg('Đã xoay mở khóa E-STOP. Nhấn [SERVO ON READY] để bật lại nguồn servo.')
         self._update_servo_buttons()
@@ -1356,9 +1603,9 @@ class YaskawaAuthenticPendantGUI:
         self.node.active_robot = 'R2' if self.node.active_robot == 'R1' else 'R1'
         self.node.jog_target_joints = list(self.node.current_joints)
         if self.node.active_robot == 'R1':
-            self.btn_robot_sel.config(text='🤖 GROUP: R1', bg='#d9480f')
+            self.btn_robot_sel.config(text='GROUP: R1', bg='#d9480f')
         else:
-            self.btn_robot_sel.config(text='🤖 GROUP: R2', bg='#5f3dc4')
+            self.btn_robot_sel.config(text='GROUP: R2', bg='#5f3dc4')
         self._refresh_screen()
         self.set_human_interface_msg(
             f'Đã chuyển quyền điều khiển Teach Pendant sang CONTROL GROUP: {self.node.active_robot}!'
@@ -1422,7 +1669,7 @@ class YaskawaAuthenticPendantGUI:
         if self.current_screen == 'JOB':
             jname = self.node.current_job_name
             self.gp_header.config(
-                text=f' JOB CONTENT    J:{jname}    CONTROL GROUP: {self.node.active_robot}    S:{self.cursor_idx:04d}  TOOL: 00'
+                text=f'JOB CONTENT    J:{jname}    CONTROL GROUP: {self.node.active_robot}    S:{self.cursor_idx:04d}  TOOL: 00'
             )
             lines = self.node.jobs[jname]
             for i, line in enumerate(lines):
@@ -1435,7 +1682,7 @@ class YaskawaAuthenticPendantGUI:
         elif self.current_screen == 'VARIABLE':
             # Màn hình POSITION VARIABLE chuẩn Hình trang 11 (#P000..#P012)
             self.gp_header.config(
-                text=' POSITION VARIABLE          TOOL: 00      (Chọn điểm -> Nhấn [MODIFY]+[ENTER] để lưu)'
+                text='POSITION VARIABLE          TOOL: 00      (Chọn điểm -> Nhấn [MODIFY]+[ENTER] để lưu)'
             )
             for idx, (p_key, q_vals) in enumerate(sorted(self.node.points.items())):
                 T_p, _ = fk_motomini(q_vals)
@@ -1450,7 +1697,7 @@ class YaskawaAuthenticPendantGUI:
         elif self.current_screen == 'IN/OUT':
             # Màn hình GENERAL PURPOSE OUTPUT chuẩn Hình 10 (Trang 9)
             self.gp_header.config(
-                text=' GENERAL PURPOSE OUTPUT / INPUT     (Di chuyển con trỏ -> Nhấn [SELECT] để ON/OFF)'
+                text='GENERAL PURPOSE OUTPUT / INPUT     (Di chuyển con trỏ -> Nhấn [SELECT] để ON/OFF)'
             )
             out_names = {
                 1: 'MAGNET / VACUUM',
@@ -1472,7 +1719,7 @@ class YaskawaAuthenticPendantGUI:
         elif self.current_screen in ('ROBOT', 'POS_MON'):
             # Màn hình WORK HOME POS chuẩn Trang 10 (Mục 7)
             self.gp_header.config(
-                text=' WORK HOME POSITION (Mục 7 - Trang 10: Nhấn [FWD] để đưa tất cả các khớp về 0°)'
+                text='WORK HOME POSITION (Mục 7 - Trang 10: Nhấn [FWD] để đưa tất cả các khớp về 0°)'
             )
             axes = ['S', 'L', 'U', 'R', 'B', 'T']
             for i in range(6):
@@ -1557,7 +1804,7 @@ class YaskawaAuthenticPendantGUI:
             p_name = p_keys[self.cursor_idx]
             self.node.points[p_name] = list(self.node.current_joints)
             self._refresh_screen()
-            self.set_human_interface_msg(f'✅ [MODIFY + ENTER] Đã lưu vị trí hiện tại của robot vào điểm #{p_name} (Trang 11)!')
+            self.set_human_interface_msg(f' [MODIFY + ENTER] Đã lưu vị trí hiện tại của robot vào điểm #{p_name} (Trang 11)!')
         elif self.current_screen == 'JOB':
             new_cmd = self.buffer_entry.get().strip().upper()
             jname = self.node.current_job_name
@@ -1569,7 +1816,7 @@ class YaskawaAuthenticPendantGUI:
                     if tok in self.node.points:
                         self.node.points[tok] = list(self.node.current_joints)
                 self._refresh_screen()
-                self.set_human_interface_msg(f'✅ [MODIFY + ENTER] Đã cập nhật dòng {self.cursor_idx:04d}: "{new_cmd}" (Trang 14).')
+                self.set_human_interface_msg(f' [MODIFY + ENTER] Đã cập nhật dòng {self.cursor_idx:04d}: "{new_cmd}" (Trang 14).')
 
     def _on_press_delete(self):
         """Trang 14: Nhấn [DELETE] + [ENTER] để xóa câu lệnh tại vị trí con trỏ."""
@@ -1685,7 +1932,7 @@ class YaskawaAuthenticPendantGUI:
             self.test_start_held = False
             if not self.node.stop_requested:
                 self.icon_state.config(text='[STOP]', bg='#e67700')
-                self.set_human_interface_msg(f'✅ Đã hoàn thành JOB:{jname}!')
+                self.set_human_interface_msg(f' Đã hoàn thành JOB:{jname}!')
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -1773,6 +2020,21 @@ class YaskawaAuthenticPendantGUI:
             self.node.execute_inform_line(cmd)
         self.node.is_running_job = False
 
+    def _toggle_user_object_lock(self):
+        self.node.user_object_lock = not self.node.user_object_lock
+        if self.node.user_object_lock:
+            self.node.coord_mode = 'USER'
+            self.node.user_target_offset = [0.0, 0.0, 0.045]
+            self.node.jog_target_joints = list(self.node.current_joints)
+            self.btn_user_lock.config(text='● BÁM HỆ USER ĐỐI TƯỢNG (0ms TRỄ): ĐANG BÁM', bg='#00c853', fg='black')
+            self.set_human_interface_msg(
+                '[USER OBJECT LOCK 50Hz]: Đang bám tâm đối tượng (0,0,+45mm) không trễ! Nhấn [Z-] để hạ xuống gắp vật đang chạy!'
+            )
+        else:
+            self.btn_user_lock.config(text='BÁM HỆ USER ĐỐI TƯỢNG (0ms TRỄ): OFF', bg='#e67700', fg='white')
+            self.set_human_interface_msg('Đã tắt chế độ khóa bám đối tượng (USER OBJECT LOCK = OFF).')
+        self._refresh_screen()
+
     def _on_top_menu_click(self, menu_name: str):
         if menu_name == 'JOB':
             self._switch_screen('JOB')
@@ -1829,7 +2091,12 @@ class YaskawaAuthenticPendantGUI:
 
 def main(args=None):
     rclpy.init(args=args)
-    node = InformTeachPendantNode()
+    robot_id = 'R1'
+    for arg in sys.argv[1:]:
+        if arg.upper() in ('R1', 'R2'):
+            robot_id = arg.upper()
+            break
+    node = InformTeachPendantNode(robot_id=robot_id)
 
     spin_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     spin_thread.start()

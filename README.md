@@ -32,9 +32,7 @@ kythuatRobot/
   - Đầy đủ các nút chức năng: `Mode Switch (REMOTE / PLAY / TEACH)`, `[START]`, `[HOLD]`, `[EMERGENCY STOP]`, `[SERVO ON READY]`, `Enable Switch`, `[MANUAL SPEED: INCH / LOW / MED / HIGH]`, `[HIGH SPEED]`, 12 phím `[Axis Key]` nhấn giữ liên tục.
   - Hỗ trợ lập trình và thực thi ngôn ngữ **INFORM**: `MOVJ`, `MOVL`, `DOUT`, `WAIT`, `PULSE`, `TIMER`, `CALL JOB`, cùng các thao tác `[INFORM LIST]`, `[INSERT]`, `[MODIFY]`, `[DELETE]`, `[FWD]`, `[BWD]`, `[TEST START]`.
   - Tích hợp bảng **Yaskawa Control Panel I/O** (`I4..I7` nối với `IN#5..IN#8`, đèn `Q4..Q7` nối với `OUT#5..OUT#8`).
-- **Luật chống xuyên thấu & va chạm vật lý (Anti-Penetration Rules)**:
-  - Ngăn đầu hút đâm xuyên qua vật mẫu, mặt băng tải hoặc mặt bàn.
-  - Vật mẫu tự động khóa phẳng (`frame_locked`) vào mặt đáy giác hút khi được hút.
+
 
 ## 3. Hướng dẫn cài đặt và chạy mô phỏng
 

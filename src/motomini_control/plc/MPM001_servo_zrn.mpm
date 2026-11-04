@@ -1,0 +1,15 @@
+VAR;
+    // Khai bao bien cuc bo (Trang 4 & 5 Phu luc MPE720)
+    LONG    A1_CreepSpd    %OL8040;
+    LONG    A1_SpeedRef    %OL8010;
+END_VAR;
+    // ====================================================================
+    // MPM001: VE VI TRI HOME CHO BO MAM XOAY TRUC A1 (Trang 5 Phu luc)
+    // Bai Thi Nghiem 3 - Yeu cau 1.1 & 2.2 (Method 19: Zero Input DI_10)
+    // ====================================================================
+    OW803C=19;   // "Home method 19 using zero input signal DI_10"
+    OL8040=500;  // "A Axis creep speed: 500 (50.0 deg/s)"
+    OL8010=1000; // "A Axis approach speed reference: 1000 (100.0 deg/s)"
+    OL8042=0;    // "A Axis final travel distance: 0 (0.0 deg)"
+    ZRN[A1]0;    // Thực hiện về vị trí Home (0.0 deg) cho trục [A1]
+END;

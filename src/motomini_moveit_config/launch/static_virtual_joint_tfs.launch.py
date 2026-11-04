@@ -4,6 +4,6 @@ from moveit_configs_utils.launches import generate_static_virtual_joint_tfs_laun
 
 def generate_launch_description():
     moveit_config = MoveItConfigsBuilder(
-        "motomini_workcell", package_name="motomini_bringup"
+        "motomini_workcell", package_name="motomini_moveit_config"
     ).to_moveit_configs()
     return generate_static_virtual_joint_tfs_launch(moveit_config)

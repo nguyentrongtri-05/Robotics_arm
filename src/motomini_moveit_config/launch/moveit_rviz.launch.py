@@ -14,6 +14,6 @@ if "LD_LIBRARY_PATH" in os.environ:
 
 def generate_launch_description():
     moveit_config = MoveItConfigsBuilder(
-        "motomini_workcell", package_name="motomini_bringup"
+        "motomini_workcell", package_name="motomini_moveit_config"
     ).to_moveit_configs()
     return generate_moveit_rviz_launch(moveit_config)

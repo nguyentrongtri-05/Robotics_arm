@@ -404,7 +404,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.14 0.70 0.06"/>
+        <box size="0.14 0.56 0.06"/>
       </geometry>
       <material name="conveyor_green">
         <color rgba="0.10 0.52 0.32 1.0"/>
@@ -413,7 +413,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.14 0.70 0.06"/>
+        <box size="0.14 0.56 0.06"/>
       </geometry>
     </collision>
   </link>
@@ -427,7 +427,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.14 0.70 0.06"/>
+        <box size="0.14 0.60 0.06"/>
       </geometry>
       <material name="conveyor2_teal">
         <color rgba="0.08 0.45 0.55 1.0"/>
@@ -436,21 +436,21 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.14 0.70 0.06"/>
+        <box size="0.14 0.60 0.06"/>
       </geometry>
     </collision>
   </link>
   <joint name="world_to_conveyor2" type="fixed">
     <parent link="world"/>
     <child link="conveyor2_frame"/>
-    <origin rpy="0 0 -1.5707963267948966" xyz="0.68 0.38 -0.03"/>
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.64 0.26 -0.03"/>
   </joint>
 
   <link name="rotary_table_a">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <cylinder length="0.04" radius="0.085"/>
+        <cylinder length="0.05" radius="0.085"/>
       </geometry>
       <material name="silver_table">
         <color rgba="0.82 0.84 0.88 1.0"/>
@@ -459,14 +459,14 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <cylinder length="0.04" radius="0.085"/>
+        <cylinder length="0.05" radius="0.085"/>
       </geometry>
     </collision>
   </link>
   <joint name="world_to_rotary_table" type="fixed">
     <parent link="world"/>
     <child link="rotary_table_a"/>
-    <origin rpy="0 0 0" xyz="0.22 0.28 -0.02"/>
+    <origin rpy="0 0 0" xyz="0.22 0.26 -0.025"/>
   </joint>
 
   <link name="user_frame_1"/>

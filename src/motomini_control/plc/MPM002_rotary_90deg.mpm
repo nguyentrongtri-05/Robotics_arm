@@ -1,0 +1,14 @@
+VAR;
+    // Khai bao bien cuc bo (Trang 4 & 5 Phu luc MPE720)
+    LONG    A1_Step90      %MW00210;
+END_VAR;
+    // ====================================================================
+    // MPM002: QUAY TUONG DOI MAM XOAY TRUC A1 GOC +90.0 DO (900 * 0.1 deg)
+    // Bai Thi Nghiem 2 (Muc 1.2) & Bai Thi Nghiem 3 (Muc 1.2) - DHBK TPHCM
+    // (Đơn vị tham chiếu trục xoay A1 trong MPE720: 0.1 độ -> 900 = 90.0 độ)
+    // ====================================================================
+    INC;                // Chế độ dịch chuyển tương đối (INCREMENTAL - Trang 5)
+    OL8010=900;         // Tốc độ quay trục A1: 900 (90.0 deg/s)
+    MOV[A1]900;         // Quay trục [A1] thêm một góc 900 (tương ứng +90.0 độ)
+    TIM1MS T250;        // Delay ổn định vị trí 250 ms trước khi báo cho Robot 2
+END;
